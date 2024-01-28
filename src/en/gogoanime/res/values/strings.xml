@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sources_preferences_title">Settings - %1$s</string>
+    <string name="requires_app_restart">Requires app restart to take effect</string>
+    <string name="category_network">Network</string>
+    <string name="sources_preferences_base_url">Override the base url</string>
+    <string name="sources_preferences_base_url_subtitle">If you want to modify the source base address in case it is not working already.</string>
+    <string name="discover_search_screen_filters_group_selected_text">select</string>
+</resources>

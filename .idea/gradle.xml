@@ -12,12 +12,36 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/api" />
             <option value="$PROJECT_DIR$/core" />
-            <option value="$PROJECT_DIR$/libs" />
-            <option value="$PROJECT_DIR$/libs/burstcloud-extractor" />
-            <option value="$PROJECT_DIR$/libs/fembed-extractor" />
-            <option value="$PROJECT_DIR$/libs/unpacker" />
-            <option value="$PROJECT_DIR$/src" />
+            <option value="$PROJECT_DIR$/extensions" />
+            <option value="$PROJECT_DIR$/extensions/en" />
+            <option value="$PROJECT_DIR$/extensions/fr" />
+            <option value="$PROJECT_DIR$/lib/burstcloud-extractor" />
+            <option value="$PROJECT_DIR$/lib/chillx-extractor" />
+            <option value="$PROJECT_DIR$/lib/dood-extractor" />
+            <option value="$PROJECT_DIR$/lib/fembed-extractor" />
+            <option value="$PROJECT_DIR$/lib/filemoon-extractor" />
+            <option value="$PROJECT_DIR$/lib/fusevideo-extractor" />
+            <option value="$PROJECT_DIR$/lib/gogostream-extractor" />
+            <option value="$PROJECT_DIR$/lib/mixdrop-extractor" />
+            <option value="$PROJECT_DIR$/lib/mp4upload-extractor" />
+            <option value="$PROJECT_DIR$/lib/mytv-extractor" />
+            <option value="$PROJECT_DIR$/lib/okru-extractor" />
+            <option value="$PROJECT_DIR$/lib/playlist-utils" />
+            <option value="$PROJECT_DIR$/lib/sendvid-extractor" />
+            <option value="$PROJECT_DIR$/lib/sibnet-extractor" />
+            <option value="$PROJECT_DIR$/lib/streamtape-extractor" />
+            <option value="$PROJECT_DIR$/lib/streamwish-extractor" />
+            <option value="$PROJECT_DIR$/lib/unpacker" />
+            <option value="$PROJECT_DIR$/lib/uqload-extractor" />
+            <option value="$PROJECT_DIR$/lib/vk-extractor" />
+            <option value="$PROJECT_DIR$/lib/voe-extractor" />
+            <option value="$PROJECT_DIR$/lib/vudeo-extractor" />
+            <option value="$PROJECT_DIR$/lib/yourupload-extractor" />
+            <option value="$PROJECT_DIR$/src/en/gogoanime" />
+            <option value="$PROJECT_DIR$/src/fr/animesama" />
+            <option value="$PROJECT_DIR$/src/fr/vostfree" />
           </set>
         </option>
       </GradleProjectSettings>

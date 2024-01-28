@@ -9,7 +9,7 @@ android {
         minSdk = build.versions.minSdk.get().toInt()
     }
 
-    namespace = "com.sf.tadami.extension.core"
+    namespace = "com.sf.tadami.extensions.core"
 
     sourceSets {
         named("main") {
