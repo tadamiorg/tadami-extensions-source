@@ -28,7 +28,7 @@ import org.jsoup.nodes.Element
 
 class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(GogoAnimePreferences) {
 
-    override val id: String = "GogoAnime"
+    override val id: Long = 1
 
     override val name: String = "GogoAnime"
 

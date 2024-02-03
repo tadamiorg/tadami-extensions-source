@@ -8,9 +8,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.navigation.NavHostController
 import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
-import com.sf.tadami.ui.tabs.settings.model.DataStoreState
-import com.sf.tadami.ui.tabs.settings.model.Preference
-import com.sf.tadami.ui.tabs.settings.model.rememberDataStoreState
+import com.sf.tadami.preferences.model.DataStoreState
+import com.sf.tadami.preferences.model.Preference
+import com.sf.tadami.preferences.model.rememberDataStoreState
 import com.sf.tadami.ui.utils.UiToasts
 
 class VostFreePreferencesScreen(

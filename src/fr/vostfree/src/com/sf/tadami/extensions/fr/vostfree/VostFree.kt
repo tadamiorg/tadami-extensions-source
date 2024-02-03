@@ -30,7 +30,7 @@ import org.jsoup.nodes.Element
 
 class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(VostFreePreferences) {
 
-    override val id: String = "VostFree"
+    override val id: Long = 3
 
     override val name: String = "VostFree"
 

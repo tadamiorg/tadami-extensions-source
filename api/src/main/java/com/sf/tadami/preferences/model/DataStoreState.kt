@@ -1,4 +1,4 @@
-package com.sf.tadami.ui.tabs.settings.model
+package com.sf.tadami.preferences.model
 
 import androidx.compose.runtime.Composable
 import androidx.datastore.core.DataStore
@@ -26,7 +26,4 @@ class DataStoreState<T>(
         throw Exception("stub")
     }
 
-    init {
-
-    }
 }

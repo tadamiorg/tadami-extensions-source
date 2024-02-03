@@ -1,4 +1,4 @@
-package com.sf.tadami.ui.tabs.settings.model
+package com.sf.tadami.preferences.model
 
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
