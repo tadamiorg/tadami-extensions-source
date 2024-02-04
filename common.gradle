@@ -1,6 +1,7 @@
+assert ext.has("pkgNameSuffix")
 android {
     compileSdkVersion build.versions.compileSdk.get().toInteger()
-    namespace "com.sf.tadami.extensions.$pkgNameSuffix"
+    namespace "com.sf.tadami.extension.$pkgNameSuffix"
 
     sourceSets {
         main {
@@ -19,7 +20,6 @@ android {
     defaultConfig {
         minSdkVersion build.versions.minSdk.get().toInteger()
         targetSdkVersion build.versions.targetSdk.get().toInteger()
-        applicationIdSuffix pkgNameSuffix
         versionCode extVersionCode
         versionName project.ext.properties.getOrDefault("apiVersion", build.versions.latestApiVersion.get()) + ".$extVersionCode"
         base {
@@ -63,7 +63,7 @@ android {
 
 dependencies {
     implementation(project(":core"))
-    api(project(":api"))
+    compileOnly(project(":api"))
     compileOnly(libs.datastore)
     compileOnly(libs.navigation.compose)
     compileOnly(libs.bundles.common)

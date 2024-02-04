@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-feature android:name="tadami.extensions" />
+    <uses-feature android:name="tadami.extension" />
 
     <application android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:label="${appName}">
-        <meta-data android:name="tadami.extensions.class" android:value="${extClass}" />
+        <meta-data android:name="tadami.extension.class" android:value="${extClass}" />
     </application>
 
 </manifest>

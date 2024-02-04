@@ -19,5 +19,5 @@ android {
 }
 
 dependencies {
-    compileOnly(libs.bundles.api)
+    implementation(libs.bundles.api)
 }

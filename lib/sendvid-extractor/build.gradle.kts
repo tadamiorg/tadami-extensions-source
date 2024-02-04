@@ -23,6 +23,6 @@ repositories {
 val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()
 
 dependencies {
-    api(project(":api"))
+    compileOnly(project(":api"))
     compileOnly(libs.bundles.common)
 }
