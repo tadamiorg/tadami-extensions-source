@@ -3,7 +3,6 @@ package com.sf.tadami.extension.fr.animesama
 import android.text.Html
 import androidx.navigation.NavHostController
 import com.sf.tadami.domain.anime.Anime
-import com.sf.tadami.extensions.fr.animesama.AnimeSamaPreferences
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor

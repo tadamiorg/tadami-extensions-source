@@ -10,5 +10,9 @@ open class App : Application() {
         fun getAppContext(): Context? {
             throw Exception("Stub")
         }
+
+        fun getLocale() : String?{
+            throw Exception("Stub!")
+        }
     }
 }

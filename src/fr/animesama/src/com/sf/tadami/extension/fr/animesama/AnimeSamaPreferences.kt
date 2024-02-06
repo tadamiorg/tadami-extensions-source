@@ -1,4 +1,4 @@
-package com.sf.tadami.extensions.fr.animesama
+package com.sf.tadami.extension.fr.animesama
 
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences

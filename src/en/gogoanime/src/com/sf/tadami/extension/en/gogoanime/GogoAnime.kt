@@ -44,11 +44,6 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(GogoAn
         return GogoAnimePreferencesScreen(navController, dataStore)
     }
 
-
-    override fun getIconRes(): Int {
-        return R.mipmap.ic_launcher
-    }
-
     // Latest
 
     override fun latestSelector(): String {

@@ -7,7 +7,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.navigation.NavHostController
-import com.sf.tadami.extensions.fr.animesama.AnimeSamaPreferences
 import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
 import com.sf.tadami.preferences.model.DataStoreState
 import com.sf.tadami.preferences.model.Preference
