@@ -1,10 +1,10 @@
 package com.sf.tadami.extension.en.gogoanime
 
-import androidx.navigation.NavHostController
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.en.gogoanime.filters.GogoAnimeFilters
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.gogostreamextractor.GogoStreamExtractor
+import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.mp4uploadextractor.Mp4uploadExtractor
 import com.sf.tadami.lib.streamwishextractor.StreamWishExtractor
 import com.sf.tadami.network.GET
@@ -16,7 +16,7 @@ import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
-import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
+import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import io.reactivex.rxjava3.core.Observable
@@ -26,13 +26,13 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
-class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(GogoAnimePreferences) {
-
-    override val id: Long = 1
-
+class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
+    sourceId = 1,
+    prefGroup = GogoAnimePreferences
+) {
     override val name: String = "GogoAnime"
-
-    override val baseUrl: String = preferences.baseUrl
+    override val baseUrl: String
+        get() = preferences.baseUrl
 
     override val lang: Lang = Lang.ENGLISH
 
@@ -40,8 +40,10 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(GogoAn
 
     override val client: OkHttpClient = network.cloudflareClient
 
-    override fun getPreferenceScreen(navController: NavHostController): PreferenceScreen {
-        return GogoAnimePreferencesScreen(navController, dataStore)
+    private val i18n = i18n(GogoAnimeTranslations)
+
+    override fun getPreferenceScreen(): SourcesPreferencesContent {
+        return getGogoAnimePreferencesContent(i18n)
     }
 
     // Latest
@@ -94,7 +96,6 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(GogoAn
         noToasts: Boolean
     ): Request {
         val params = GogoAnimeFilters.getSearchParameters(filters)
-
         val request = when {
             params.genre.isNotEmpty() -> GET("$baseUrl/genre/${params.genre}?page=$page", headers)
             params.recent.isNotEmpty() -> GET(
@@ -226,5 +227,5 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(GogoAn
 
     // Filters
 
-    override fun getFilterList(): AnimeFilterList = GogoAnimeFilters.FILTER_LIST
+    override fun getFilterList(): AnimeFilterList = GogoAnimeFilters.FILTER_LIST(i18n)
 }

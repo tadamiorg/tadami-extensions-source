@@ -1,4 +1,3 @@
-assert ext.has("pkgNameSuffix")
 android {
     compileSdkVersion build.versions.compileSdk.get().toInteger()
     namespace "com.sf.tadami.extension.$pkgNameSuffix"
@@ -22,17 +21,25 @@ android {
         targetSdkVersion build.versions.targetSdk.get().toInteger()
         versionCode extVersionCode
         versionName project.ext.properties.getOrDefault("apiVersion", build.versions.latestApiVersion.get()) + ".$extVersionCode"
-        base {
-            archivesBaseName = "tadami-$pkgNameSuffix-v$versionName"
-        }
+        archivesBaseName = "tadami-$pkgNameSuffix-v$versionName"
         manifestPlaceholders = [
                 appName : "Tadami: $extName",
                 extClass: extClass
         ]
     }
 
+    signingConfigs {
+        release {
+            storeFile file(env.KEY_FILE.value)
+            storePassword env.KEY_STORE_PASSWORD.value
+            keyAlias env.ALIAS.value
+            keyPassword env.KEY_STORE_PASSWORD.value
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
         }
     }
@@ -58,6 +65,11 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
         freeCompilerArgs += "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
+    }
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "tadami-${pkgNameSuffix}-v${versionName}.apk"
+        }
     }
 }
 

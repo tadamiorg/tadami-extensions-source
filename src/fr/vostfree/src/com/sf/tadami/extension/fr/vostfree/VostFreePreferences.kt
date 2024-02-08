@@ -1,4 +1,4 @@
-package com.sf.tadami.extensions.fr.vostfree
+package com.sf.tadami.extension.fr.vostfree
 
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
@@ -12,7 +12,7 @@ data class VostFreePreferences(
 
     companion object : CustomPreferences<VostFreePreferences> {
         const val DEFAULT_BASE_URL = "https://vostfree.ws"
-        private val BASE_URL = stringPreferencesKey("base_url")
+        val BASE_URL = stringPreferencesKey("base_url")
 
         override fun transform(preferences: Preferences): VostFreePreferences {
             return VostFreePreferences(

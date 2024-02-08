@@ -1,73 +1,31 @@
 package com.sf.tadami.extension.en.gogoanime
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.res.stringResource
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.navigation.NavHostController
-import com.sf.tadami.App
-import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
-import com.sf.tadami.preferences.model.DataStoreState
-import com.sf.tadami.preferences.model.Preference
-import com.sf.tadami.preferences.model.rememberDataStoreState
-import com.sf.tadami.ui.utils.UiToasts
+import com.sf.tadami.lib.i18n.i18n
+import com.sf.tadami.preferences.model.SourcePreference
+import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 
-class GogoAnimePreferencesScreen(
-    navController: NavHostController,
-    dataStore: DataStore<Preferences>
-) : PreferenceScreen {
+fun getGogoAnimePreferencesContent(
+    i18n: i18n
+) : SourcesPreferencesContent {
 
-    override val title: Int = R.string.sources_preferences_title
-
-    @Composable
-    override fun getTitle(): String {
-        return App.getLocale() ?: "Bite"
-    }
-
-    override val backHandler: (() -> Unit) = {
-        navController.navigateUp()
-    }
-
-    override val getCustomDataStore: (() -> DataStore<Preferences>) = {
-        dataStore
-    }
-
-    @Composable
-    override fun getPreferences(): List<Preference> {
-        val gogoAnimePreferencesState = rememberDataStoreState(GogoAnimePreferences,getCustomDataStore())
-        val gogoAnimePreferences by gogoAnimePreferencesState.value.collectAsState()
-
-        return listOf(
-            getNetworkGroup(prefState = gogoAnimePreferencesState, prefs = gogoAnimePreferences)
+    return SourcesPreferencesContent(
+        title = "GogoAnime",
+        preferences = listOf(
+            SourcePreference.PreferenceCategory(
+                title = i18n.getString("category_network"),
+                preferenceItems = listOf(
+                    SourcePreference.PreferenceItem.EditTextPreference(
+                        value = GogoAnimePreferences.DEFAULT_BASE_URL,
+                        key = GogoAnimePreferences.BASE_URL,
+                        title = i18n.getString("sources_preferences_base_url"),
+                        subtitle = i18n.getString("sources_preferences_base_url_subtitle"),
+                        defaultValue = GogoAnimePreferences.DEFAULT_BASE_URL,
+                        onValueChanged = {
+                            true
+                        }
+                    ),
+                )
+            ),
         )
-    }
-
-    @Composable
-    fun getNetworkGroup(
-        prefState: DataStoreState<GogoAnimePreferences>,
-        prefs: GogoAnimePreferences
-    ): Preference.PreferenceCategory {
-        return Preference.PreferenceCategory(
-            title = stringResource(id = R.string.category_network),
-            preferenceItems = listOf(
-                Preference.PreferenceItem.EditTextPreference(
-                    value = prefs.baseUrl,
-                    title = stringResource(id = R.string.sources_preferences_base_url),
-                    subtitle = stringResource(id = R.string.sources_preferences_base_url_subtitle),
-                    defaultValue = GogoAnimePreferences.DEFAULT_BASE_URL,
-                    onValueChanged = {
-                        prefState.setValue(
-                            prefs.copy(
-                                baseUrl = it
-                            )
-                        )
-                        UiToasts.showToast(R.string.requires_app_restart)
-                        true
-                    }
-                ),
-            )
-        )
-    }
+    )
 }

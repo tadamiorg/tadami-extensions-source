@@ -1,72 +1,31 @@
-package com.sf.tadami.extensions.fr.vostfree
+package com.sf.tadami.extension.fr.vostfree
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.res.stringResource
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.navigation.NavHostController
-import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
-import com.sf.tadami.preferences.model.DataStoreState
-import com.sf.tadami.preferences.model.Preference
-import com.sf.tadami.preferences.model.rememberDataStoreState
-import com.sf.tadami.ui.utils.UiToasts
+import com.sf.tadami.lib.i18n.i18n
+import com.sf.tadami.preferences.model.SourcePreference
+import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 
-class VostFreePreferencesScreen(
-    navController: NavHostController,
-    dataStore: DataStore<Preferences>
-) : PreferenceScreen {
+fun getVostFreePreferencesContent(
+    i18n: i18n
+) : SourcesPreferencesContent {
 
-    override val title: Int = R.string.sources_preferences_title
-
-    @Composable
-    override fun getTitle(): String {
-        return stringResource(title,"VostFree")
-    }
-
-    override val backHandler: (() -> Unit) = {
-        navController.navigateUp()
-    }
-
-    override val getCustomDataStore: (() -> DataStore<Preferences>) = {
-        dataStore
-    }
-
-    @Composable
-    override fun getPreferences(): List<Preference> {
-        val vostFreePreferencesState = rememberDataStoreState(VostFreePreferences,getCustomDataStore())
-        val gogoAnimePreferences by vostFreePreferencesState.value.collectAsState()
-
-        return listOf(
-            getNetworkGroup(prefState = vostFreePreferencesState, prefs = gogoAnimePreferences)
-        )
-    }
-
-    @Composable
-    fun getNetworkGroup(
-        prefState: DataStoreState<VostFreePreferences>,
-        prefs: VostFreePreferences
-    ): Preference.PreferenceCategory {
-        return Preference.PreferenceCategory(
-            title = stringResource(id = R.string.category_network),
-            preferenceItems = listOf(
-                Preference.PreferenceItem.EditTextPreference(
-                    value = prefs.baseUrl,
-                    title = stringResource(id = R.string.sources_preferences_base_url),
-                    subtitle = stringResource(id = R.string.sources_preferences_base_url_subtitle),
-                    defaultValue = VostFreePreferences.DEFAULT_BASE_URL,
-                    onValueChanged = {
-                        prefState.setValue(
-                            prefs.copy(
-                                baseUrl = it
-                            )
-                        )
-                        UiToasts.showToast(R.string.requires_app_restart)
-                        true
-                    }
+    return SourcesPreferencesContent(
+        title = "VostFree",
+        preferences = listOf(
+            SourcePreference.PreferenceCategory(
+                title = i18n.getString("category_network"),
+                preferenceItems = listOf(
+                    SourcePreference.PreferenceItem.EditTextPreference(
+                        value = VostFreePreferences.DEFAULT_BASE_URL,
+                        key = VostFreePreferences.BASE_URL,
+                        title = i18n.getString("sources_preferences_base_url"),
+                        subtitle = i18n.getString("sources_preferences_base_url_subtitle"),
+                        defaultValue = VostFreePreferences.DEFAULT_BASE_URL,
+                        onValueChanged = {
+                            true
+                        }
+                    ),
                 )
-            )
+            ),
         )
-    }
+    )
 }

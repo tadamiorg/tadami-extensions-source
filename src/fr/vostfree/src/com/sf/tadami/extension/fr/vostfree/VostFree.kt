@@ -1,10 +1,7 @@
 package com.sf.tadami.extension.fr.vostfree
 
-import androidx.navigation.NavHostController
-import com.sf.tadami.App
-import com.sf.tadami.extensions.fr.vostfree.VostFreePreferences
-import com.sf.tadami.extensions.fr.vostfree.VostFreePreferencesScreen
 import com.sf.tadami.lib.doodextractor.DoodExtractor
+import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.okruextractor.OkruExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.uqloadextractor.UqloadExtractor
@@ -19,7 +16,7 @@ import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
-import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
+import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 import com.sf.tadami.ui.utils.UiToasts
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
@@ -30,10 +27,10 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
-class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(VostFreePreferences) {
-
-    override val id: Long = 3
-
+class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
+    sourceId = 3,
+    prefGroup = VostFreePreferences
+) {
     override val name: String = "VostFree"
 
     override val baseUrl: String = preferences.baseUrl
@@ -42,12 +39,11 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(VostFree
 
     override val client: OkHttpClient = network.cloudflareClient
 
-    override fun getIconRes(): Int {
-        return R.mipmap.ic_launcher
-    }
 
-    override fun getPreferenceScreen(navController: NavHostController): PreferenceScreen {
-        return VostFreePreferencesScreen(navController,dataStore)
+    private val i18n = i18n(VostFreeTranslations)
+
+    override fun getPreferenceScreen(): SourcesPreferencesContent {
+        return getVostFreePreferencesContent(i18n)
     }
 
     override fun latestSelector(): String = "div.last-episode"
@@ -212,9 +208,9 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(VostFree
 
     override fun getFilterList(): AnimeFilterList {
         return AnimeFilterList(
-            AnimeFilter.Header(App.getAppContext()?.getString(R.string.discover_search_filters_independent) ?: "Filters ingores each other"),
-            GenreList(genreFilters),
-            TypeList(typeFilters)
+            AnimeFilter.Header(i18n.getString("discover_search_filters_independent")),
+            GenreList(arrayOf(i18n.getString("discover_search_screen_filters_group_selected_text") to "") + genreFilters),
+            TypeList(arrayOf(i18n.getString("discover_search_screen_filters_group_selected_text") to "") + typeFilters)
         )
     }
 
@@ -224,7 +220,6 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(VostFree
 
     private val genreFilters =
         arrayOf(
-            Pair(App.getAppContext()?.getString(R.string.discover_search_screen_filters_group_selected_text) ?: "select",""),
             Pair("Action", "Action"),
             Pair("Comédie", "Comédie"),
             Pair("Drame", "Drame"),
@@ -243,7 +238,6 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(VostFree
 
     private val typeFilters =
         arrayOf(
-            Pair(App.getAppContext()?.getString(R.string.discover_search_screen_filters_group_selected_text) ?: "select",""),
             Pair("Animes VOSTFR", "animes-vostfr"),
             Pair("Animes VF", "animes-vf"),
             Pair("Films", "films-vf-vostfr"),

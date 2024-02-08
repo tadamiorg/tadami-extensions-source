@@ -12,7 +12,7 @@ data class GogoAnimePreferences(
 
     companion object : CustomPreferences<GogoAnimePreferences> {
         const val DEFAULT_BASE_URL = "https://anitaku.to"
-        private val BASE_URL = stringPreferencesKey("base_url")
+        val BASE_URL = stringPreferencesKey("base_url")
 
         override fun transform(preferences: Preferences): GogoAnimePreferences {
             return GogoAnimePreferences(

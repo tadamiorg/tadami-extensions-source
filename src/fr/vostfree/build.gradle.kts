@@ -22,5 +22,6 @@ dependencies {
     implementation(project(":lib-dood-extractor"))
     implementation(project(":lib-okru-extractor"))
     implementation(project(":lib-vudeo-extractor"))
+    implementation(project(":lib-i18n"))
 }
 

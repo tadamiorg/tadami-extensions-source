@@ -12,7 +12,7 @@ data class AnimeSamaPreferences(
 
     companion object : CustomPreferences<AnimeSamaPreferences> {
         const val DEFAULT_BASE_URL = "https://anime-sama.fr"
-        private val BASE_URL = stringPreferencesKey("base_url")
+        val BASE_URL = stringPreferencesKey("base_url")
 
         override fun transform(preferences: Preferences): AnimeSamaPreferences {
             return AnimeSamaPreferences(

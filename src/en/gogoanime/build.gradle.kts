@@ -20,5 +20,6 @@ dependencies {
     implementation(project(":lib-dood-extractor"))
     implementation(project(":lib-mp4upload-extractor"))
     implementation(project(":lib-gogostream-extractor"))
+    implementation(project(":lib-i18n"))
 }
 

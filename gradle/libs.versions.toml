@@ -2,6 +2,7 @@
 # Gradle
 agp_version = "8.1.4"
 kotlin_version = "1.9.10"
+dotenv_version = "4.0.0"
 # Kotlin serialization
 serialization_version = "1.6.2"
 # Coroutines
@@ -24,6 +25,7 @@ navigation-version = "2.6.0"
 gradle-agp = { module = "com.android.tools.build:gradle", version.ref = "agp_version" }
 gradle-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin_version" }
 gradle-serialization = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin_version" }
+gradle-dotenv = { module="co.uzzu.dotenv:gradle", version.ref = "dotenv_version"}
 
 # Kotlin serialization
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlin_version" }
@@ -73,4 +75,7 @@ api = [
     "kotlin-json",
     "navigation-compose"
 ]
+
+[plugins]
+dotenv = { id="co.uzzu.dotenv.gradle", version.ref="dotenv_version" }
 

@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.en.gogoanime.filters
 
+import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.source.model.AnimeFilter
 import com.sf.tadami.source.model.AnimeFilterList
 
@@ -51,26 +52,28 @@ object GogoAnimeFilters {
     class StatusSearchFilter : CheckBoxFilterList("Status", GogoAnimeFiltersData.STATUS_SEARCH_LIST)
     class SortSearchFilter : QueryPartFilter("Sort by", GogoAnimeFiltersData.SORT_SEARCH_LIST)
 
-    class GenreFilter : QueryPartFilter("Genre", GogoAnimeFiltersData.GENRE_LIST)
-    class RecentFilter : QueryPartFilter("Recent episodes", GogoAnimeFiltersData.RECENT_LIST)
-    class SeasonFilter : QueryPartFilter("Season", GogoAnimeFiltersData.SEASON_LIST)
+    class GenreFilter(defaultChoice : String) : QueryPartFilter("Genre", arrayOf(defaultChoice to "") + GogoAnimeFiltersData.GENRE_LIST)
+    class RecentFilter(defaultChoice : String) : QueryPartFilter("Recent episodes", arrayOf(defaultChoice to "") + GogoAnimeFiltersData.RECENT_LIST)
+    class SeasonFilter(defaultChoice : String) : QueryPartFilter("Season", arrayOf(defaultChoice to "") + GogoAnimeFiltersData.SEASON_LIST)
 
-    val FILTER_LIST get() = AnimeFilterList(
-        AnimeFilter.Header("Advanced search"),
-        GenreSearchFilter(),
-        CountrySearchFilter(),
-        SeasonSearchFilter(),
-        YearSearchFilter(),
-        LanguageSearchFilter(),
-        TypeSearchFilter(),
-        StatusSearchFilter(),
-        SortSearchFilter(),
-        AnimeFilter.Header("Select sub-page"),
-        AnimeFilter.Header("Note: Ignores search & other filters"),
-        GenreFilter(),
-        RecentFilter(),
-        SeasonFilter(),
-    )
+    fun FILTER_LIST(i18n: i18n) : AnimeFilterList{
+        return AnimeFilterList(
+            AnimeFilter.Header("Advanced search"),
+            GenreSearchFilter(),
+            CountrySearchFilter(),
+            SeasonSearchFilter(),
+            YearSearchFilter(),
+            LanguageSearchFilter(),
+            TypeSearchFilter(),
+            StatusSearchFilter(),
+            SortSearchFilter(),
+            AnimeFilter.Header("Select sub-page"),
+            AnimeFilter.Header("Note: Ignores search & other filters"),
+            GenreFilter(i18n.getString("discover_search_screen_filters_group_selected_text")),
+            RecentFilter(i18n.getString("discover_search_screen_filters_group_selected_text")),
+            SeasonFilter(i18n.getString("discover_search_screen_filters_group_selected_text")),
+        )
+    }
 
     data class FilterSearchParams(
         val filter: String = "",

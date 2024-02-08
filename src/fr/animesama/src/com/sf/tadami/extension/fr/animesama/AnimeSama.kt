@@ -1,8 +1,8 @@
 package com.sf.tadami.extension.fr.animesama
 
 import android.text.Html
-import androidx.navigation.NavHostController
 import com.sf.tadami.domain.anime.Anime
+import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
@@ -17,7 +17,7 @@ import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
-import com.sf.tadami.ui.tabs.settings.components.PreferenceScreen
+import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 import com.sf.tadami.ui.utils.capFirstLetter
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
@@ -29,10 +29,10 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
-class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeSamaPreferences) {
-
-    override val id: Long = 2
-
+class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
+    sourceId = 2,
+    prefGroup = AnimeSamaPreferences
+) {
     override val name: String = "AnimeSama"
 
     override val baseUrl: String = preferences.baseUrl
@@ -41,16 +41,14 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
 
     override val client: OkHttpClient = network.cloudflareClient
 
-    override fun getIconRes(): Int {
-        return R.mipmap.ic_launcher
-    }
-
     private var episodeNumber: Int? = null
 
     override val supportRecent = false
 
-    override fun getPreferenceScreen(navController: NavHostController): PreferenceScreen {
-        return AnimeSamaPreferencesScreen(navController,dataStore)
+    private val i18n = i18n(AnimeSamaTranslations)
+
+    override fun getPreferenceScreen(): SourcesPreferencesContent {
+        return getAnimeSamaPreferencesContent(i18n)
     }
 
     override fun latestSelector(): String = throw Exception("Not used")
@@ -150,6 +148,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
                     .build()
                 POST("$baseUrl/catalogue/searchbar.php", headers, formData)
             }
+
             else -> {
                 GET("$baseUrl/catalogue/index.php?page=$page", headers)
             }
@@ -196,7 +195,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
         if (secondPart != null) {
             season += " $secondPart"
         }
-        if(thirdPart!=null && thirdPart== "hs"){
+        if (thirdPart != null && thirdPart == "hs") {
             season += " SF"
         }
 
@@ -263,9 +262,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
                     "newSPF" -> {
                         episodesNames.add(parameters[0])
                     }
+
                     "newSP" -> {
                         episodesNames.add("Episode ${parameters[0]}")
                     }
+
                     "creerListe" -> {
                         val debut = parameters[0].toInt()
                         val fin = parameters[1].toInt()
@@ -273,10 +274,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
                             episodesNames.add("Episode $i")
                         }
                     }
-                    "finirListe", "finirListeOP"-> {
+
+                    "finirListe", "finirListeOP" -> {
                         val baseEpNumber = parameters[0].toInt()
-                        for (i in 0 until (totalEpisodes-episodesNames.size)-1) {
-                            episodesNames.add("Episode ${baseEpNumber+i}")
+                        for (i in 0 until (totalEpisodes - episodesNames.size) - 1) {
+                            episodesNames.add("Episode ${baseEpNumber + i}")
                         }
                     }
                 }
@@ -292,7 +294,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
             .asCancelableObservable()
             .flatMap { response ->
                 val document = response.asJsoup()
-                val episodesUrl = document.selectFirst("#sousBlocMilieu")?.selectFirst("script")?.attr("src")?.takeIf { it.contains("episodes.js") } ?: "episodes.js"
+                val episodesUrl =
+                    document.selectFirst("#sousBlocMilieu")?.selectFirst("script")?.attr("src")
+                        ?.takeIf { it.contains("episodes.js") } ?: "episodes.js"
                 val episodeScriptRequest = GET(baseUrl + anime.url + "/$episodesUrl", headers)
                 client.newCall(episodeScriptRequest)
                     .asCancelableObservable()
@@ -319,7 +323,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
                                 getEpisodesTrueNames(document),
                                 variableWithMostLinks?.value
                             )
-                        } catch (e : Exception){
+                        } catch (e: Exception) {
                             emptyList()
                         }
                         for (i in 1..(variableWithMostLinks?.value?.minus(1) ?: 0)) {
@@ -365,15 +369,19 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
                         streamUrl.contains("sendvid.com") -> {
                             SendvidExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
+
                         streamUrl.contains("sibnet.ru") -> {
                             SibnetExtractor(newClient).videosFromUrl(streamUrl)
                         }
+
                         streamUrl.contains("anime-sama.fr") -> {
                             listOf(StreamSource(streamUrl, "AnimeSama"))
                         }
+
                         streamUrl.contains("vk.") -> {
                             VkExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
+
                         else -> null
                     }
                 }.getOrNull()
@@ -390,7 +398,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(AnimeS
 
     override fun episodeRequest(url: String): Request {
         episodeNumber = url.substringAfter("?number=").toInt()
-        return GET(baseUrl + url.substringBeforeLast("?")  +"/episodes.js?", headers)
+        return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", headers)
     }
 
     override fun List<StreamSource>.sort(): List<StreamSource> {

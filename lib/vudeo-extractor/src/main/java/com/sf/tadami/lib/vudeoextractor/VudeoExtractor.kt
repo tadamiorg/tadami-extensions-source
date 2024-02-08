@@ -3,8 +3,8 @@ package com.sf.tadami.lib.vudeoextractor
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
-import okhttp3.OkHttpClient
 import okhttp3.Headers
+import okhttp3.OkHttpClient
 
 class VudeoExtractor(private val client: OkHttpClient) {
     fun videosFromUrl(url: String, headers: Headers): List<StreamSource> {

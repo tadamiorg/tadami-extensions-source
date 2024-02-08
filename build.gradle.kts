@@ -1,3 +1,6 @@
+plugins {
+    alias(libs.plugins.dotenv)
+}
 buildscript {
     repositories {
         mavenCentral()

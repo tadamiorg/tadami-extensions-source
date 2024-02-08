@@ -19,5 +19,6 @@ dependencies {
     implementation(project(":lib-sendvid-extractor"))
     implementation(project(":lib-vk-extractor"))
     implementation(project(":lib-sibnet-extractor"))
+    implementation(project(":lib-i18n"))
 }
 
