@@ -82,7 +82,7 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
             query.isNotBlank() -> {
                 if (query.length < 4) {
                     if(!noToasts){
-                        UiToasts.showToast(R.string.vostfree_search_length_error)
+                        UiToasts.showToast(i18n.getString("vostfree_search_length_error"))
                     }
                 }
                 return POST("$baseUrl/index.php?do=search", headers, formData)

@@ -23,5 +23,10 @@ val VostFreeTranslations : Translations = mapOf(
     "discover_search_filters_independent" to mapOf(
         Language.en to "Filters ignores each other",
         Language.fr to "Les filtres et la recherche s'ignorent"
+    ),
+    "vostfree_search_length_error" to mapOf(
+        Language.en to "Search query must be at least 4 caracters long",
+        Language.fr to "La recherche doit faire au moins 4 caractères"
     )
+
 )
