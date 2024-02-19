@@ -13,6 +13,7 @@ import uy.kohesive.injekt.injectLazy
 class BurstCloudExtractor(private val client: OkHttpClient) {
 
     private val json: Json by injectLazy()
+    private val serverName: String = "BurstCloud"
 
     fun videoFromUrl(url: String, headers: Headers, name: String = "BurstCloud", prefix: String = ""): List<StreamSource> {
 
@@ -29,8 +30,8 @@ class BurstCloudExtractor(private val client: OkHttpClient) {
             val jsonObj = json.decodeFromString<BurstCloudDto>(jsonString)
             val videoUrl = jsonObj.purchase.cdnUrl
             if (videoUrl.isNotEmpty()) {
-                val quality = prefix + name
-                listOf(StreamSource(videoUrl, quality, newHeaders))
+                val fullName = prefix + name
+                listOf(StreamSource(url = videoUrl, quality = "", fullName = fullName, server = serverName, headers = newHeaders))
             } else {
                 null
             }

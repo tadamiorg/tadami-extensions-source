@@ -22,11 +22,11 @@ class FembedExtractor(private val client: OkHttpClient) {
 
         return if (jsonResponse.success) {
             jsonResponse.data.map {
-                val quality = ("Fembed:${it.label}").let {
+                val fullName = ("Fembed:${it.label}").let {
                     if (prefix.isNotBlank()) "$prefix $it"
                     else it
                 }
-                StreamSource(it.file, quality)
+                StreamSource(url = it.file, fullName = fullName, server = "Fembed")
             }
         } else { emptyList() }
     }

@@ -30,7 +30,7 @@ class VkExtractor(private val client: OkHttpClient, private val headers: Headers
         return REGEX_VIDEO.findAll(data).map {
             val quality = it.groupValues[1]
             val videoUrl = it.groupValues[2].replace("\\/", "/")
-            StreamSource(videoUrl, "$prefix Vk: ${quality}p", headers = getVideoHeaders(videoUrl))
+            StreamSource(url = videoUrl, fullName = "$prefix Vk: ${quality}p", server = "Vk", quality = "${quality}p", headers = getVideoHeaders(videoUrl))
         }.toList()
     }
     companion object {

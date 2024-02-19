@@ -32,7 +32,7 @@ class DoodExtractor(private val client: OkHttpClient) {
                 ),
             ).execute().body.string()
             val videoUrl = "$videoUrlStart$randomString?token=$token&expiry=$expiry"
-            StreamSource(videoUrl, newQuality, headers = doodHeaders(doodHost))
+            StreamSource(url = videoUrl, fullName = newQuality, quality = "", server = "Doodstream", headers = doodHeaders(doodHost))
         }.getOrNull()
     }
 

@@ -12,7 +12,7 @@ class SendvidExtractor(private val client: OkHttpClient, private val headers: He
         val document = client.newCall(GET(url)).execute().asJsoup()
         val videoUrl = document.selectFirst("source#video_source")?.attr("src") ?: return emptyList()
 
-        videoList.add(StreamSource(videoUrl, "$prefix Sendvid"))
+        videoList.add(StreamSource(url = videoUrl, fullName = "$prefix Sendvid", server = "Sendvid"))
 
         return videoList
     }

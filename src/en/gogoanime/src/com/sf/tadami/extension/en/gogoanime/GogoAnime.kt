@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.en.gogoanime
 
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.en.gogoanime.filters.GogoAnimeFilters
 import com.sf.tadami.lib.doodextractor.DoodExtractor
@@ -19,7 +20,9 @@ import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
 import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
+import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -42,8 +45,29 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
 
     private val i18n = i18n(GogoAnimeTranslations)
 
+    init {
+        runBlocking {
+            preferencesMigrations()
+        }
+    }
+
     override fun getPreferenceScreen(): SourcesPreferencesContent {
         return getGogoAnimePreferencesContent(i18n)
+    }
+
+    private suspend fun preferencesMigrations() {
+        val oldVersion = preferences.lastVersionCode
+        if (oldVersion < BuildConfig.VERSION_CODE) {
+            dataStore.editPreference(
+                BuildConfig.VERSION_CODE,
+                intPreferencesKey(GogoAnimePreferences.LAST_VERSION_CODE.name)
+            )
+
+            // Fresh install
+            if (oldVersion == 0) {
+                return
+            }
+        }
     }
 
     // Latest
@@ -165,15 +189,24 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
     // Episode Source Stream
 
     override fun List<StreamSource>.sort(): List<StreamSource> {
-        val quality = "1080"
-        val server = "Gogostream"
-
-        return this.sortedWith(
-            compareBy(
-                { it.quality.contains(quality) },
-                { it.quality.contains(server) }
-            )
-        ).reversed()
+        return this.groupBy { it.server.lowercase() }.entries
+            .sortedWith(
+                compareBy { (server, _) ->
+                    preferences.playerStreamsOrder.split(",").indexOf(server)
+                }
+            ).flatMap { group ->
+                group.value.sortedWith(
+                    compareBy { source ->
+                        when {
+                            source.quality.isEmpty() -> Int.MAX_VALUE // Empty strings come last
+                            else -> {
+                                val matchResult = Regex("""(\d+)""").find(source.quality)
+                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
+                            }
+                        }
+                    }
+                ).reversed()
+            }
     }
 
     override fun streamSourcesFromElement(element: Element): List<StreamSource> =
@@ -214,7 +247,9 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
                         "filelions" -> {
                             streamwishExtractor.videosFromUrl(
                                 serverUrl,
-                                videoNameGen = { quality -> "FileLions - $quality" })
+                                videoNameGen = { quality -> "FileLions - $quality" }).map {
+                                    it.copy(server="FileLions")
+                            }
                         }
 
                         else -> null

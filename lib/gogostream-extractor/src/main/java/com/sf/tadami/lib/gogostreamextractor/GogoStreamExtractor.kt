@@ -46,6 +46,7 @@ class GogoStreamExtractor(private val client: OkHttpClient) {
             val encryptedId = cryptoHandler(id, iv, secretKey)
             val token = httpUrl.queryParameter("token")
             val qualityPrefix = if (token != null) "Gogostream - " else "Vidstreaming - "
+            val serverName = if (token != null) "Gogostream" else "Vidstreaming"
 
             val jsonResponse = client.newCall(
                 GET(
@@ -65,12 +66,16 @@ class GogoStreamExtractor(private val client: OkHttpClient) {
             when {
                 sourceList.size == 1 && sourceList.first().type == "hls" -> {
                     val playlistUrl = sourceList.first().file
-                    playlistUtils.extractFromHls(playlistUrl, serverUrl, videoNameGen = { qualityPrefix + it })
+                    playlistUtils.extractFromHls(playlistUrl, serverUrl, videoNameGen = { qualityPrefix + it }).map {
+                        it.copy(
+                            server = serverName
+                        )
+                    }
                 }
                 else -> {
                     val headers = Headers.headersOf("Referer", serverUrl)
                     sourceList.map { video ->
-                        StreamSource(video.file, qualityPrefix + video.label, headers)
+                        StreamSource(url = video.file, fullName = qualityPrefix + video.label, server = serverName, quality = video.label, headers = headers)
                     }
                 }
             }

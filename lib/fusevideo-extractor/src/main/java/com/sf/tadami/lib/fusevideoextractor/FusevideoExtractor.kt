@@ -25,7 +25,16 @@ class FusevideoExtractor(private val client: OkHttpClient, private val headers: 
             val data = Base64.decode(encoded, Base64.DEFAULT).toString(Charsets.UTF_8)
             val jsonData = data.split("|||")[1].replace("\\", "")
             val videoUrl = Regex("\"(https://.*?/m/.*)\"").find(jsonData)?.groupValues?.get(1)!!
-            PlaylistUtils(client, newHeaders).extractFromHls(videoUrl, videoNameGen = { "${prefix}Fusevideo - $it" })
+            val streamSources = PlaylistUtils(client, newHeaders)
+                .extractFromHls(
+                    playlistUrl = videoUrl,
+                    videoNameGen = { "${prefix}Fusevideo${if(it.isNotEmpty()) " - $it" else ""}" }
+                )
+            streamSources.map {
+                it.copy(
+                    server = "Fusevideo"
+                )
+            }
         }.getOrDefault(emptyList())
     }
 

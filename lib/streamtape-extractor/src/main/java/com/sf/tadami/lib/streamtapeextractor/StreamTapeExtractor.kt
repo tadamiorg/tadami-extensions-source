@@ -21,6 +21,6 @@ class StreamTapeExtractor(private val client: OkHttpClient) {
             ?: return null
         val videoUrl = "https:" + script.substringBefore("'") +
                 script.substringAfter("+ ('xcd").substringBefore("'")
-        return StreamSource(videoUrl, quality)
+        return StreamSource(url = videoUrl, fullName = quality, server = "StreamTape")
     }
 }

@@ -63,7 +63,7 @@ class ChillxExtractor(private val client: OkHttpClient, private val headers: Hea
                     .build()
 
 
-                videoList.add(StreamSource(videoUrl, prefix + quality, headers = videoHeaders))
+                videoList.add(StreamSource(url = videoUrl, fullName = prefix + quality, server = "Chillx", quality = quality, headers = videoHeaders))
 
             }
         return videoList

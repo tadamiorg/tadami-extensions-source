@@ -37,8 +37,10 @@ class FileMoonExtractor(private val client: OkHttpClient) {
                 val videoUrl = it.substringAfter("\n").substringBefore("\n")
 
                 StreamSource(
-                    videoUrl,
-                    prefix + resolution,
+                    url = videoUrl,
+                    fullName = prefix + resolution,
+                    quality = resolution,
+                    server = "Filemoon",
                     headers = videoHeaders
                 )
             }

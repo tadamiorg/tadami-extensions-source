@@ -22,7 +22,7 @@ class MixDropExtractor(private val client: OkHttpClient) {
         val videoUrl = "https:" + unpacked.substringAfter("Core.wurl=\"")
             .substringBefore("\"")
 
-        val quality = prefix + ("MixDrop").let {
+        val fullName = prefix + ("MixDrop").let {
             when {
                 lang.isNotBlank() -> "$it($lang)"
                 else -> it
@@ -30,6 +30,6 @@ class MixDropExtractor(private val client: OkHttpClient) {
         }
 
         val headers = Headers.headersOf("Referer", "https://mixdrop.co/")
-        return listOf(StreamSource(videoUrl, quality, headers = headers))
+        return listOf(StreamSource(url = videoUrl, fullName = fullName, server = "MixDrop", quality = "", headers = headers))
     }
 }

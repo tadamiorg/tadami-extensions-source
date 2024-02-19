@@ -13,7 +13,7 @@ class VudeoExtractor(private val client: OkHttpClient) {
         document.select("script:containsData(sources: [)").forEach { script ->
             val videoUrl = script.data().substringAfter("sources: [").substringBefore("]").replace("\"", "").split(",")
             videoUrl.forEach {
-                videoList.add(StreamSource(it, "Vudeo", headers))
+                videoList.add(StreamSource(url = it, fullName = "Vudeo", server = "Vudeo", headers = headers))
             }
         }
         return videoList

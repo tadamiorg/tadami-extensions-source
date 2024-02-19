@@ -30,7 +30,11 @@ class StreamWishExtractor(private val client: OkHttpClient, private val headers:
             ?.substringBefore("\"", "")
             ?.takeIf(String::isNotBlank)
             ?: return emptyList()
-
-        return playlistUtils.extractFromHls(masterUrl, url, videoNameGen = videoNameGen)
+        val streamSources = playlistUtils.extractFromHls(masterUrl, url, videoNameGen = videoNameGen)
+        return streamSources.map {
+            it.copy(
+                server = "StreamWish"
+            )
+        }
     }
 }

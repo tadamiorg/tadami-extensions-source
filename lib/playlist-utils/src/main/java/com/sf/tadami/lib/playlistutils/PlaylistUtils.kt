@@ -83,7 +83,7 @@ class PlaylistUtils(private val client: OkHttpClient, private val headers: Heade
         if (PLAYLIST_SEPARATOR !in masterPlaylist) {
             return listOf(
                 StreamSource(
-                    playlistUrl, videoNameGen("Video"), headers = masterHeaders
+                    url = playlistUrl, fullName = videoNameGen(""), headers = masterHeaders
                 )
             )
         }
@@ -111,7 +111,9 @@ class PlaylistUtils(private val client: OkHttpClient, private val headers: Heade
 
 
             StreamSource(
-                videoUrl, videoNameGen(resolution),
+                url = videoUrl,
+                fullName = videoNameGen(resolution),
+                quality = resolution,
                 headers = videoHeadersGen(headers, referer, videoUrl),
             )
         }
@@ -260,8 +262,9 @@ class PlaylistUtils(private val client: OkHttpClient, private val headers: Heade
             val videoUrl = videoSrc.text()
 
             StreamSource(
-                videoUrl,
-                videoNameGen(res, bandwidth),
+                url = videoUrl,
+                fullName = videoNameGen(res, bandwidth),
+                quality = res,
                 headers = videoHeadersGen(headers, referer, videoUrl),
             )
         }

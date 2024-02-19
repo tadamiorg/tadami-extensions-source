@@ -47,7 +47,7 @@ class OkruExtractor(private val client: OkHttpClient) {
                 }
             }
             if (videoUrl.startsWith("https://")) {
-                StreamSource(videoUrl, videoQuality)
+                StreamSource(url = videoUrl, fullName = videoQuality, server = "Okru", quality = quality)
             } else {
                 null
             }

@@ -31,7 +31,7 @@ class SibnetExtractor(private val client: OkHttpClient) {
         )
 
         videoList.add(
-            StreamSource(videoUrl, "$prefix Sibnet", headers = videoHeaders),
+            StreamSource(url = videoUrl, fullName = "$prefix Sibnet", server = "Sibnet", headers = videoHeaders),
         )
         return videoList
     }
