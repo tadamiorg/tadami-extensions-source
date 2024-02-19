@@ -8,6 +8,10 @@ val VostFreeTranslations : Translations = mapOf(
         Language.en to "Network",
         Language.fr to "Réseau"
     ),
+    "category_player" to mapOf(
+        Language.en to "Player",
+        Language.fr to "Lecteur Vidéo"
+    ),
     "sources_preferences_base_url" to mapOf(
         Language.en to "Override the base url",
         Language.fr to "Remplacer l\'url de base"
@@ -27,6 +31,14 @@ val VostFreeTranslations : Translations = mapOf(
     "vostfree_search_length_error" to mapOf(
         Language.en to "Search query must be at least 4 caracters long",
         Language.fr to "La recherche doit faire au moins 4 caractères"
-    )
+    ),
+    "sources_preferences_players_order" to mapOf(
+        Language.en to "Server priority",
+        Language.fr to "Priorité des serveurs"
+    ),
+    "sources_preferences_players_order_subtitle" to mapOf(
+        Language.en to "Adjust the priority of stream servers to load the streams of your preference",
+        Language.fr to "Adaptez la priorité des serveurs de streaming pour charger les streams de votre choix"
+    ),
 
 )

@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.fr.vostfree
 
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.okruextractor.OkruExtractor
@@ -20,6 +21,8 @@ import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesC
 import com.sf.tadami.ui.utils.UiToasts
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
+import com.sf.tadami.utils.editPreference
+import kotlinx.coroutines.runBlocking
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,6 +44,26 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
 
     private val i18n = i18n(VostFreeTranslations)
+
+    init {
+        runBlocking {
+            preferencesMigrations()
+        }
+    }
+    private suspend fun preferencesMigrations() {
+        val oldVersion = preferences.lastVersionCode
+        if (oldVersion < BuildConfig.VERSION_CODE) {
+            dataStore.editPreference(
+                BuildConfig.VERSION_CODE,
+                intPreferencesKey(VostFreePreferences.LAST_VERSION_CODE.name)
+            )
+
+            // Fresh install
+            if (oldVersion == 0) {
+                return
+            }
+        }
+    }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
         return getVostFreePreferencesContent(i18n)
@@ -245,10 +268,23 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
 
     override fun List<StreamSource>.sort(): List<StreamSource> {
-        val server = "Mytv"
-
-        return this.sortedWith(
-            compareBy { it.quality.contains(server) }
-        ).reversed()
+        return this.groupBy { it.server.lowercase() }.entries
+            .sortedWith(
+                compareBy { (server, _) ->
+                    preferences.playerStreamsOrder.split(",").indexOf(server)
+                }
+            ).flatMap { group ->
+                group.value.sortedWith(
+                    compareBy { source ->
+                        when {
+                            source.quality.isEmpty() -> Int.MAX_VALUE // Empty strings come last
+                            else -> {
+                                val matchResult = Regex("""(\d+)""").find(source.quality)
+                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
+                            }
+                        }
+                    }
+                ).reversed()
+            }
     }
 }

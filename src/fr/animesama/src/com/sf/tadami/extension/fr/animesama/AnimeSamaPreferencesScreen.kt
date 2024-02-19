@@ -26,6 +26,23 @@ fun getAnimeSamaPreferencesContent(
                     ),
                 )
             ),
+            SourcePreference.PreferenceCategory(
+                title = i18n.getString("category_player"),
+                videoCategory = true,
+                preferenceItems = listOf(
+                    SourcePreference.PreferenceItem.ReorderStringPreference(
+                        value = AnimeSamaPreferences.DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString(separator = ","),
+                        key = AnimeSamaPreferences.PLAYER_STREAMS_ORDER,
+                        items = AnimeSamaPreferences.DEFAULT_PLAYER_STREAMS_ORDER,
+                        title = i18n.getString("sources_preferences_players_order"),
+                        subtitle = i18n.getString("sources_preferences_players_order_subtitle"),
+                        defaultValue = AnimeSamaPreferences.DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString(separator = ","),
+                        onValueChanged = {
+                            true
+                        }
+                    ),
+                )
+            ),
         )
     )
 }

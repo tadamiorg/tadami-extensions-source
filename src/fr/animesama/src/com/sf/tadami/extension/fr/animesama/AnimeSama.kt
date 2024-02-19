@@ -1,6 +1,7 @@
 package com.sf.tadami.extension.fr.animesama
 
 import android.text.Html
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
@@ -21,7 +22,9 @@ import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesC
 import com.sf.tadami.ui.utils.capFirstLetter
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
+import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
+import kotlinx.coroutines.runBlocking
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -46,6 +49,26 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     override val supportRecent = false
 
     private val i18n = i18n(AnimeSamaTranslations)
+
+    init {
+        runBlocking {
+            preferencesMigrations()
+        }
+    }
+    private suspend fun preferencesMigrations() {
+        val oldVersion = preferences.lastVersionCode
+        if (oldVersion < BuildConfig.VERSION_CODE) {
+            dataStore.editPreference(
+                BuildConfig.VERSION_CODE,
+                intPreferencesKey(AnimeSamaPreferences.LAST_VERSION_CODE.name)
+            )
+
+            // Fresh install
+            if (oldVersion == 0) {
+                return
+            }
+        }
+    }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
         return getAnimeSamaPreferencesContent(i18n)
@@ -375,7 +398,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("anime-sama.fr") -> {
-                            listOf(StreamSource(streamUrl, "AnimeSama"))
+                            listOf(StreamSource(url = streamUrl, fullName = "AnimeSama", server = "AnimeSama"))
                         }
 
                         streamUrl.contains("vk.") -> {
@@ -402,10 +425,23 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
     override fun List<StreamSource>.sort(): List<StreamSource> {
-        val server = "AnimeSama"
-
-        return this.sortedWith(
-            compareBy { it.quality.contains(server) }
-        ).reversed()
+        return this.groupBy { it.server.lowercase() }.entries
+            .sortedWith(
+                compareBy { (server, _) ->
+                    preferences.playerStreamsOrder.split(",").indexOf(server)
+                }
+            ).flatMap { group ->
+                group.value.sortedWith(
+                    compareBy { source ->
+                        when {
+                            source.quality.isEmpty() -> Int.MAX_VALUE // Empty strings come last
+                            else -> {
+                                val matchResult = Regex("""(\d+)""").find(source.quality)
+                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
+                            }
+                        }
+                    }
+                ).reversed()
+            }
     }
 }
