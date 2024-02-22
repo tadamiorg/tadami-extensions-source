@@ -31,7 +31,7 @@ data class VostFreePreferences(
         override fun transform(preferences: Preferences): VostFreePreferences {
             return VostFreePreferences(
                 baseUrl = preferences[BASE_URL] ?: DEFAULT_BASE_URL,
-                playerStreamsOrder =  preferences[PLAYER_STREAMS_ORDER] ?: DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString { "," },
+                playerStreamsOrder =  preferences[PLAYER_STREAMS_ORDER] ?: DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString (separator = "," ),
                 lastVersionCode = preferences[LAST_VERSION_CODE] ?: 0,
             )
         }
