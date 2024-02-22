@@ -138,13 +138,17 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
 
-        anime.title = document.select("div.anime_info_body_bg h1").text()
-        anime.genres = document.select("p.type:eq(5) a").map { it.attr("title") }
-        anime.description = document.selectFirst("p.type:eq(4)")?.ownText()
-        anime.status = document.select("p.type:eq(7) a").text()
-        anime.release = document.selectFirst("p.type:eq(6)")?.ownText()
+        anime.title = document.selectFirst("div.anime_info_body_bg > h1")!!.text()
+        anime.genres = document.getInfo("Genre:")?.select("a")?.map { it.attr("title") } ?: emptyList()
+        anime.description = document.select("div.description").text()
+        anime.status = document.getInfo("Status:")?.select("a")?.text()
+        anime.release = document.getInfo("Released:")?.ownText()
 
         return anime
+    }
+
+    private fun Document.getInfo(text: String): Element? {
+        return selectFirst("p.type:has(span:containsOwn($text))") ?: null
     }
 
     // Episodes List
