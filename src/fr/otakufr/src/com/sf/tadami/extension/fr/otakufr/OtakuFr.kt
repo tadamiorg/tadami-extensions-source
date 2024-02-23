@@ -1,0 +1,249 @@
+package com.sf.tadami.extension.fr.otakufr
+
+import androidx.datastore.preferences.core.intPreferencesKey
+import com.sf.tadami.extension.fr.otakufr.extractors.UpstreamExtractor
+import com.sf.tadami.extension.fr.otakufr.extractors.VidbmExtractor
+import com.sf.tadami.lib.doodextractor.DoodExtractor
+import com.sf.tadami.lib.i18n.i18n
+import com.sf.tadami.lib.okruextractor.OkruExtractor
+import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
+import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
+import com.sf.tadami.lib.streamwishextractor.StreamWishExtractor
+import com.sf.tadami.lib.voeextractor.VoeExtractor
+import com.sf.tadami.network.GET
+import com.sf.tadami.network.asJsoup
+import com.sf.tadami.source.model.AnimeFilterList
+import com.sf.tadami.source.model.SAnime
+import com.sf.tadami.source.model.SEpisode
+import com.sf.tadami.source.model.StreamSource
+import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
+import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
+import com.sf.tadami.ui.utils.parallelMap
+import com.sf.tadami.utils.Lang
+import com.sf.tadami.utils.editPreference
+import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
+    sourceId = 5,
+    prefGroup = OtakuFrPreferences
+) {
+    override val name: String = "OtakuFr"
+
+    override val baseUrl: String = preferences.baseUrl
+
+    override val lang: Lang = Lang.FRENCH
+
+    override val client: OkHttpClient = network.cloudflareClient
+
+    override val supportRecent = false
+
+    private val i18n = i18n(OtakuSamaTranslations)
+
+    init {
+        runBlocking {
+            preferencesMigrations()
+        }
+    }
+
+    private suspend fun preferencesMigrations() {
+        val oldVersion = preferences.lastVersionCode
+        if (oldVersion < BuildConfig.VERSION_CODE) {
+            dataStore.editPreference(
+                BuildConfig.VERSION_CODE,
+                intPreferencesKey(OtakuFrPreferences.LAST_VERSION_CODE.name)
+            )
+
+            // Fresh install
+            if (oldVersion == 0) {
+                return
+            }
+        }
+    }
+
+    override fun getPreferenceScreen(): SourcesPreferencesContent {
+        return getOtakuSamaPreferencesContent(i18n)
+    }
+
+    override fun latestSelector(): String = throw  Exception("Unused")
+
+    override fun latestAnimeNextPageSelector(): String = throw  Exception("Unused")
+
+    override fun latestAnimeFromElement(element: Element): SAnime = throw  Exception("Unused")
+
+    override fun latestAnimesRequest(page: Int): Request = throw  Exception("Unused")
+
+    override fun searchSelector(): String = "div.list > article.card"
+
+    override fun searchAnimeNextPageSelector(): String = "ul.pagination > li.active ~ li"
+
+    override fun searchAnimeFromElement(element: Element): SAnime {
+        val a = element.selectFirst("a.episode-name")!!
+
+        return SAnime.create().apply {
+            thumbnailUrl = element.selectFirst("img")!!.attr("src")
+            setUrlWithoutDomain(a.attr("href"))
+            title = a.text().trim()
+        }
+    }
+
+    override fun searchAnimeRequest(
+        page: Int,
+        query: String,
+        filters: AnimeFilterList,
+        noToasts: Boolean
+    ): Request {
+        return when {
+            query.isNotBlank() -> GET("$baseUrl/toute-la-liste-affiches/?q=$query".addPage(page), headers)
+            else -> GET("$baseUrl/en-cours".addPage(page), headers)
+        }
+    }
+
+    override fun animeDetailsParse(document: Document): SAnime {
+        val infoDiv = document.selectFirst("article.card div.episode")!!
+
+        return SAnime.create().apply {
+            status = infoDiv.selectFirst("li:contains(Statut)")?.ownText()
+            genres = infoDiv.select("li:contains(Genre:) ul li").map { it.text() }
+            description = buildString {
+                append(infoDiv.select("> p:not(:has(strong)):not(:empty)").joinToString("\n\n") { it.text() })
+                append("\n")
+                infoDiv.selectFirst("li:contains(Autre Nom)")?.let { append("\n${it.text()}") }
+                infoDiv.selectFirst("li:contains(Auteur)")?.let { append("\n${it.text()}") }
+                infoDiv.selectFirst("li:contains(Réalisateur)")?.let { append("\n${it.text()}") }
+                infoDiv.selectFirst("li:contains(Type)")?.let { append("\n${it.text()}") }
+                infoDiv.selectFirst("li:contains(Sortie initiale)")?.let { append("\n${it.text()}") }
+                infoDiv.selectFirst("li:contains(Durée)")?.let { append("\n${it.text()}") }
+            }
+        }
+    }
+
+    override fun streamSourcesSelector(): String = throw Exception("Unused")
+
+    override fun streamSourcesFromElement(element: Element): List<StreamSource> = throw Exception("Unused")
+
+    override fun episodesSelector(): String = "div.list-episodes > a"
+
+    override fun episodeFromElement(element: Element): SEpisode {
+        val epText = element.ownText()
+
+        return SEpisode.create().apply {
+            setUrlWithoutDomain(element.attr("abs:href"))
+            name = epText
+            episodeNumber = Regex(" ([\\d.]+) (?:Vostfr|VF)").find(epText)
+                ?.groupValues
+                ?.get(1)
+                ?.toFloatOrNull()
+                ?: 1F
+            dateUpload = element.selectFirst("span")
+                ?.text()
+                ?.let(::parseDate)
+                ?: 0L
+        }
+    }
+
+    private val DATE_FORMATTER by lazy {
+        SimpleDateFormat("d MMMM yyyy", Locale.FRENCH)
+    }
+
+    private fun parseDate(dateStr: String): Long {
+        return runCatching { DATE_FORMATTER.parse(dateStr)?.time }
+            .getOrNull() ?: 0L
+    }
+
+    private val streamwishExtractor by lazy { StreamWishExtractor(client, headers) }
+    private val vidbmExtractor by lazy { VidbmExtractor(client, headers) }
+    private val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
+    private val upstreamExtractor by lazy { UpstreamExtractor(client, headers) }
+    private val okruExtractor by lazy { OkruExtractor(client) }
+    private val doodExtractor by lazy { DoodExtractor(client) }
+    private val voeExtractor by lazy { VoeExtractor(client) }
+    private val sibnetExtractor by lazy { SibnetExtractor(client) }
+
+    override fun episodeSourcesParse(response: Response): List<StreamSource> {
+        val document = response.asJsoup()
+
+        val serversList = document.select("div.tab-content iframe[src]").mapNotNull {
+            val url = it.attr("abs:src")
+
+            if (url.contains("parisanime.com")) {
+                val docHeaders = headers.newBuilder().apply {
+                    add("Accept", "*/*")
+                    add("Host", url.toHttpUrl().host)
+                    add("Referer", url)
+                    add("X-Requested-With", "XMLHttpRequest")
+                }.build()
+
+                val newDoc = client.newCall(
+                    GET(url, headers = docHeaders),
+                ).execute().asJsoup()
+                newDoc.selectFirst("div[data-url]")?.attr("data-url")
+            } else {
+                url
+            }
+        }
+        val streamSourcesList = mutableListOf<StreamSource>()
+        streamSourcesList.addAll(
+            serversList.parallelMap {
+                runCatching {
+                    getHosterVideos(it)
+                }.getOrNull()
+            }.filterNotNull().flatten()
+        )
+
+        return streamSourcesList.sort()
+    }
+
+    private fun getHosterVideos(host: String): List<StreamSource> {
+        return when {
+            host.startsWith("https://doo") -> doodExtractor.videosFromUrl(host, quality = "Doodstream")
+            host.contains("streamwish") -> streamwishExtractor.videosFromUrl(host)
+            host.contains("sibnet.ru") -> sibnetExtractor.videosFromUrl(host)
+            host.contains("vadbam") -> vidbmExtractor.videosFromUrl(host)
+            host.contains("sendvid.com") -> sendvidExtractor.videosFromUrl(host)
+            host.contains("ok.ru") -> okruExtractor.videosFromUrl(host)
+            host.contains("upstream") -> upstreamExtractor.videosFromUrl(host)
+            host.startsWith("https://voe") -> voeExtractor.videosFromUrl(host)
+            else -> emptyList()
+        }
+    }
+
+    private fun String.addPage(page: Int): String {
+        return if (page == 1) {
+            this
+        } else {
+            this.toHttpUrl().newBuilder().apply {
+                addPathSegment("page")
+                addPathSegment(page.toString())
+            }.build().toString()
+        }
+    }
+
+    override fun List<StreamSource>.sort(): List<StreamSource> {
+        return this.groupBy { it.server.lowercase() }.entries
+            .sortedWith(
+                compareBy { (server, _) ->
+                    preferences.playerStreamsOrder.split(",").indexOf(server)
+                }
+            ).flatMap { group ->
+                group.value.sortedWith(
+                    compareBy { source ->
+                        when {
+                            source.quality.isEmpty() -> Int.MAX_VALUE // Empty strings come last
+                            else -> {
+                                val matchResult = Regex("""(\d+)""").find(source.quality)
+                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
+                            }
+                        }
+                    }
+                ).reversed()
+            }
+    }
+}
