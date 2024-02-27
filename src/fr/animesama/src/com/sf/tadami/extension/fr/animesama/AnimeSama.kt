@@ -55,6 +55,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             preferencesMigrations()
         }
     }
+
     private suspend fun preferencesMigrations() {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
@@ -110,42 +111,24 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         .asCancelableObservable()
                         .map { response ->
                             val doc = response.asJsoup()
-                            val seasonDiv =
-                                doc.selectFirst("h2:contains(Anime) ~ div:has(script)")
-                            val seasonScript =
-                                seasonDiv?.selectFirst("script")?.data()?.trimIndent()
-                            val seasonsMatches = seasonScript?.let {
-                                Regex("""[^(/*)]panneauAnime\("(.*?)",\s*"(.*?)"\)""").findAll(it)
-                            }
+                            val seasonRegex = Regex(
+                                "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
+                                RegexOption.MULTILINE
+                            )
+                            val scripts =
+                                doc.select("h2 + p + div > script, h2 + div > script").toString()
+                            val seasons = seasonRegex.findAll(scripts).map { match ->
+                                val (seasonName, seasonUrl) = match.destructured
+                                seasonName to seasonUrl
+                            }.toMutableList()
 
-                            val kaiSeasonDiv =
-                                doc.selectFirst("h2:contains(Anime Version Kai) ~ div:has(script)")
-                            val kaiSeasonScript =
-                                kaiSeasonDiv?.selectFirst("script")?.data()?.trimIndent()
-                            val kaiSeasonsMatches = kaiSeasonScript?.let {
-                                Regex("""[^(/*)]panneauAnime\("(.*?)",\s*"(.*?)"\)""").findAll(it)
-                            }
-
-                            val seasons = seasonsMatches?.map { matchResult ->
-                                val (param1, param2) = matchResult.destructured
-                                param1 to param2
-                            }?.toMutableList()
-
-                            val kaiSeasons = kaiSeasonsMatches?.map { matchResult ->
-                                val (param1, param2) = matchResult.destructured
-                                param1 to param2
-                            }?.toList()
-
-                            seasons?.addAll(kaiSeasons ?: emptyList())
-
-                            seasons?.map { (seasonName, seasonUrl) ->
+                            seasons.map { (seasonName, seasonUrl) ->
                                 val animeSeason = SAnime.create()
                                 animeSeason.url = "${anime.url}/$seasonUrl"
                                 animeSeason.thumbnailUrl = anime.thumbnailUrl
-                                animeSeason.title =
-                                    "${parseSeason(seasonUrl).takeIf { it.isNotBlank() } ?: seasonName} - ${anime.title}"
+                                animeSeason.title = "$seasonName - ${anime.title}"
                                 animeSeason
-                            } ?: emptyList<SAnime>()
+                            }
                         }
                 }.toList().toObservable()
 
@@ -197,37 +180,30 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return client.newCall(animeDetailsRequest(anime))
             .asCancelableObservable()
             .map { response ->
-                animeDetailsParse(response.asJsoup(), parseSeason(anime.url))
+                animeDetailsParse(response.asJsoup(), anime)
             }
     }
 
-    private fun parseSeason(seasonUrl: String?): String {
-        if (seasonUrl == null) return ""
-        val pathSegments = seasonUrl.split("/").takeIf { it.size >= 2 }
-        val seasonPath = pathSegments?.get(pathSegments.size - 2) ?: return ""
-
-        val seasonRegex = Regex("""(\D+)(\d*)(\D*)""")
-        val regexResults = seasonRegex.find(seasonPath) ?: return ""
-        val firstPart = regexResults.groupValues.getOrNull(1) ?: return ""
-
-        val secondPart = regexResults.groupValues.getOrNull(2)
-
-        val thirdPart = regexResults.groupValues.getOrNull(3)
-
-        var season = firstPart.capFirstLetter()
-        if (secondPart != null) {
-            season += " $secondPart"
-        }
-        if (thirdPart != null && thirdPart == "hs") {
-            season += " SF"
-        }
-
-        return season.trim()
-    }
-
-    private fun animeDetailsParse(document: Document, season: String): SAnime {
+    private fun animeDetailsParse(document: Document, dbAnime: Anime): SAnime {
         val anime = SAnime.create()
-        anime.title = "$season - " + document.selectFirst("#titreOeuvre")!!.text()
+        val animeTitle = document.selectFirst("#titreOeuvre")?.text()
+        val seasonRegex = Regex(
+            "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
+            RegexOption.MULTILINE
+        )
+        val scripts = document.select("h2 + p + div > script, h2 + div > script").toString()
+        val foundSeason = seasonRegex.findAll(scripts).find { match ->
+            val (_, seasonUrl) = match.destructured
+            dbAnime.url.contains(seasonUrl)
+        }
+
+        var seasonName = dbAnime.title
+        if (foundSeason != null) {
+            val (name, _) = foundSeason.destructured
+            seasonName = "$name - $animeTitle"
+        }
+
+        anime.title = seasonName
         anime.description =
             document.selectFirst("h2:contains(Synopsis) ~ p.text-sm.text-gray-400.mt-2")?.text()
         anime.genres = document.selectFirst("h2:contains(Genres) ~ a")?.text()?.trim()
@@ -398,7 +374,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("anime-sama.fr") -> {
-                            listOf(StreamSource(url = streamUrl, fullName = "AnimeSama", server = "AnimeSama"))
+                            listOf(
+                                StreamSource(
+                                    url = streamUrl,
+                                    fullName = "AnimeSama",
+                                    server = "AnimeSama"
+                                )
+                            )
                         }
 
                         streamUrl.contains("vk.") -> {
