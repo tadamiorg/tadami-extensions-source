@@ -22,7 +22,7 @@ class FembedExtractor(private val client: OkHttpClient) {
 
         return if (jsonResponse.success) {
             jsonResponse.data.map {
-                val fullName = ("Fembed:${it.label}").let {
+                val fullName = ("Fembed - ${it.label}").let {
                     if (prefix.isNotBlank()) "$prefix $it"
                     else it
                 }

@@ -24,7 +24,7 @@ class Mp4uploadExtractor(private val client: OkHttpClient) {
             .substringAfter("src:").substringAfter('"').substringBefore('"')
 
         val resolution = QUALITY_REGEX.find(script)?.groupValues?.let { "${it[1]}p" } ?: ""
-        val fullName = "${prefix}Mp4Upload: $resolution$suffix"
+        val fullName = "${prefix}Mp4Upload - $resolution$suffix"
 
         return listOf(StreamSource(url = videoUrl, fullName = fullName, server = "Mp4Upload", quality = resolution, headers = newHeaders))
     }

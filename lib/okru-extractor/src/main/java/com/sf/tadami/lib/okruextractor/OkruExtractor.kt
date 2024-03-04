@@ -39,7 +39,7 @@ class OkruExtractor(private val client: OkHttpClient) {
                     it
                 }
             }
-            val videoQuality = ("Okru:" + quality).let {
+            val videoQuality = ("Okru - $quality").let {
                 if (prefix.isNotBlank()) {
                     "$prefix $it"
                 } else {

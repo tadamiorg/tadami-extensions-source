@@ -19,7 +19,6 @@ import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
 import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
-import com.sf.tadami.ui.utils.capFirstLetter
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference

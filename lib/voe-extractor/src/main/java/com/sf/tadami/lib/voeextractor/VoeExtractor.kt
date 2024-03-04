@@ -13,7 +13,7 @@ class VoeExtractor(private val client: OkHttpClient) {
             ?: return emptyList()
         val videoUrl = script.substringAfter("hls': '").substringBefore("'")
         val resolution = script.substringAfter("video_height': ").substringBefore(",")
-        val qualityStr = quality ?: "VoeCDN(${resolution}p)"
+        val qualityStr = quality ?: "VoeCDN - ${resolution}p"
         return listOf(StreamSource(url = videoUrl, fullName = qualityStr, server = "Voe", quality = "${resolution}p"))
     }
 }

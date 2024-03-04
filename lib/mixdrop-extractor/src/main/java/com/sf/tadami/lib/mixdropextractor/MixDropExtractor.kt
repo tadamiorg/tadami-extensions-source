@@ -24,7 +24,7 @@ class MixDropExtractor(private val client: OkHttpClient) {
 
         val fullName = prefix + ("MixDrop").let {
             when {
-                lang.isNotBlank() -> "$it($lang)"
+                lang.isNotBlank() -> "$it - $lang"
                 else -> it
             }
         }

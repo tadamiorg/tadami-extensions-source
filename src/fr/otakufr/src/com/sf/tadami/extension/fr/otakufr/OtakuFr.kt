@@ -11,7 +11,9 @@ import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.streamwishextractor.StreamWishExtractor
 import com.sf.tadami.lib.voeextractor.VoeExtractor
 import com.sf.tadami.network.GET
+import com.sf.tadami.network.asCancelableObservable
 import com.sf.tadami.network.asJsoup
+import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.SEpisode
@@ -21,6 +23,7 @@ import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesC
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
+import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -43,7 +46,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override val client: OkHttpClient = network.cloudflareClient
 
-    override val supportRecent = false
+    override val supportRecent = true
 
     private val i18n = i18n(OtakuSamaTranslations)
 
@@ -72,13 +75,57 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         return getOtakuSamaPreferencesContent(i18n)
     }
 
-    override fun latestSelector(): String = throw  Exception("Unused")
+    /* LATEST */
+    override fun latestSelector(): String = "article.episode"
 
-    override fun latestAnimeNextPageSelector(): String = throw  Exception("Unused")
+    override fun latestAnimeNextPageSelector(): String =
+        "ul.pagination > li.page-item.active + li.page-item"
 
-    override fun latestAnimeFromElement(element: Element): SAnime = throw  Exception("Unused")
+    override fun latestAnimeFromElement(element: Element): SAnime {
+        val anime: SAnime = SAnime.create()
+        anime.title = ""
+        anime.setUrlWithoutDomain(element.select("div.text-center > a.episode-link").attr("href"))
+        anime.thumbnailUrl = element.select("div.text-center > figure > a > img").attr("src")
+        return anime
+    }
 
-    override fun latestAnimesRequest(page: Int): Request = throw  Exception("Unused")
+    override fun fetchLatest(page: Int): Observable<AnimesPage> {
+        return client.newCall(latestAnimesRequest(page))
+            .asCancelableObservable()
+            .flatMap { response ->
+
+                val document = response.asJsoup()
+
+                val animeList = document.select(latestSelector()).map { element ->
+                    latestAnimeFromElement(element)
+                }
+
+                val hasNextPage = latestAnimeNextPageSelector().let { selector ->
+                    document.select(selector).first()
+                } != null
+
+                val pageRequests = Observable.fromIterable(animeList).flatMap { anime ->
+                    client.newCall(GET("$baseUrl${anime.url}"))
+                        .asCancelableObservable()
+                        .map { response ->
+                            val doc = response.asJsoup()
+                            val arianne = doc.select("ol.breadcrumb > li.breadcrumb-item:eq(1) a")
+                            anime.setUrlWithoutDomain(arianne.attr("href"))
+                            anime.title = arianne.text().trim()
+                            anime
+                        }
+                }.toList().toObservable()
+
+                pageRequests.map { pages ->
+                    AnimesPage(pages, hasNextPage)
+                }
+            }
+    }
+
+    override fun latestAnimesRequest(page: Int): Request = GET("${baseUrl}page/$page/")
+
+
+    /* SEARCH */
 
     override fun searchSelector(): String = "div.list > article.card"
 
@@ -101,7 +148,11 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         noToasts: Boolean
     ): Request {
         return when {
-            query.isNotBlank() -> GET("$baseUrl/toute-la-liste-affiches/?q=$query".addPage(page), headers)
+            query.isNotBlank() -> GET(
+                "$baseUrl/toute-la-liste-affiches/?q=$query".addPage(page),
+                headers
+            )
+
             else -> GET("$baseUrl/en-cours".addPage(page), headers)
         }
     }
@@ -113,13 +164,16 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
             status = infoDiv.selectFirst("li:contains(Statut)")?.ownText()
             genres = infoDiv.select("li:contains(Genre:) ul li").map { it.text() }
             description = buildString {
-                append(infoDiv.select("> p:not(:has(strong)):not(:empty)").joinToString("\n\n") { it.text() })
+                append(
+                    infoDiv.select("> p:not(:has(strong)):not(:empty)")
+                        .joinToString("\n\n") { it.text() })
                 append("\n")
                 infoDiv.selectFirst("li:contains(Autre Nom)")?.let { append("\n${it.text()}") }
                 infoDiv.selectFirst("li:contains(Auteur)")?.let { append("\n${it.text()}") }
                 infoDiv.selectFirst("li:contains(Réalisateur)")?.let { append("\n${it.text()}") }
                 infoDiv.selectFirst("li:contains(Type)")?.let { append("\n${it.text()}") }
-                infoDiv.selectFirst("li:contains(Sortie initiale)")?.let { append("\n${it.text()}") }
+                infoDiv.selectFirst("li:contains(Sortie initiale)")
+                    ?.let { append("\n${it.text()}") }
                 infoDiv.selectFirst("li:contains(Durée)")?.let { append("\n${it.text()}") }
             }
         }
@@ -127,7 +181,8 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun streamSourcesSelector(): String = throw Exception("Unused")
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> = throw Exception("Unused")
+    override fun streamSourcesFromElement(element: Element): List<StreamSource> =
+        throw Exception("Unused")
 
     override fun episodesSelector(): String = "div.list-episodes > a"
 
@@ -203,11 +258,20 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     private fun getHosterVideos(host: String): List<StreamSource> {
         return when {
-            host.startsWith("https://doo") -> doodExtractor.videosFromUrl(host, quality = "Doodstream")
-            host.contains("streamwish") -> streamwishExtractor.videosFromUrl(host)
+            host.startsWith("https://d00") || host.startsWith("https://doo") -> doodExtractor.videosFromUrl(
+                host,
+                quality = "Doodstream",
+                redirect = false
+            )
+
+            host.contains("wish") -> streamwishExtractor.videosFromUrl(host)
             host.contains("sibnet.ru") -> sibnetExtractor.videosFromUrl(host)
-            host.contains("vadbam") -> vidbmExtractor.videosFromUrl(host)
-            host.contains("sendvid.com") -> sendvidExtractor.videosFromUrl(host)
+            host.contains("vedbam") -> vidbmExtractor.videosFromUrl(host)
+            host.contains("sendvid.com") -> {
+                val fixedHost = if (!host.contains("https:")) "https:$host" else host
+                sendvidExtractor.videosFromUrl(fixedHost)
+            }
+
             host.contains("ok.ru") -> okruExtractor.videosFromUrl(host)
             host.contains("upstream") -> upstreamExtractor.videosFromUrl(host)
             host.startsWith("https://voe") -> voeExtractor.videosFromUrl(host)

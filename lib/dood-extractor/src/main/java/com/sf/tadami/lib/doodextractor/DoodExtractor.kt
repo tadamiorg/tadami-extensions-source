@@ -12,7 +12,7 @@ class DoodExtractor(private val client: OkHttpClient) {
         quality: String? = null,
         redirect: Boolean = true,
     ): StreamSource? {
-        val newQuality = quality ?: ("Doodstream" + if (redirect) " mirror" else "")
+        val newQuality = quality ?: ("Doodstream" + if (redirect) " Mirror" else "")
 
         return runCatching {
             val response = client.newCall(GET(url)).execute()
