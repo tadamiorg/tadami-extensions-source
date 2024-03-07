@@ -6,7 +6,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",2)
+        set("extVersionCode",3)
         set("extName","GogoAnime")
         set("pkgNameSuffix","en.gogoanime")
         set("extClass",".GogoAnime")

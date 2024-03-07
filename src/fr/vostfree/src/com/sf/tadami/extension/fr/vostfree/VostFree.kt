@@ -36,7 +36,8 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 ) {
     override val name: String = "VostFree"
 
-    override val baseUrl: String = preferences.baseUrl
+    override val baseUrl: String
+        get() = preferences.baseUrl
 
     override val lang: Lang = Lang.FRENCH
 

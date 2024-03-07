@@ -6,7 +6,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",2)
+        set("extVersionCode",3)
         set("extName","VostFree")
         set("pkgNameSuffix","fr.vostfree")
         set("extClass",".VostFree")

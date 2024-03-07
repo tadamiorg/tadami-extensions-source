@@ -37,7 +37,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 ) {
     override val name: String = "AnimeSama"
 
-    override val baseUrl: String = preferences.baseUrl
+    override val baseUrl: String
+        get() = preferences.baseUrl
 
     override val lang: Lang = Lang.FRENCH
 

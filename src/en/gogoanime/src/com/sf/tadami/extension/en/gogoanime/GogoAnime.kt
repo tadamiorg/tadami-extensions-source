@@ -39,7 +39,7 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
 
     override val lang: Lang = Lang.ENGLISH
 
-    private val ajaxBaseUrl: String = "https://ajax.gogo-load.com/ajax"
+    private val ajaxBaseUrl: String = "https://ajax.gogocdn.net/ajax"
 
     override val client: OkHttpClient = network.cloudflareClient
 
