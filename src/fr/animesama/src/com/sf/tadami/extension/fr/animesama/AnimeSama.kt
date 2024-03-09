@@ -3,6 +3,7 @@ package com.sf.tadami.extension.fr.animesama
 import android.text.Html
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
+import com.sf.tadami.extension.fr.animesama.extractors.AnimeSamaExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
@@ -341,7 +342,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             }
     }
 
-    override fun episodeSourcesParse(response: Response): List<StreamSource> {
+    override fun episodeSourcesParse(response: Response): List<StreamSource> = throw Exception("Unused")
+
+    private fun episodeSourcesParse(response: Response,originUrl : String): List<StreamSource> {
 
         val document: Document = response.asJsoup()
         val javascriptCode = Html.fromHtml(document.html(), Html.FROM_HTML_MODE_LEGACY).toString()
@@ -374,13 +377,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("anime-sama.fr") -> {
-                            listOf(
-                                StreamSource(
-                                    url = streamUrl,
-                                    fullName = "AnimeSama",
-                                    server = "AnimeSama"
-                                )
-                            )
+                            AnimeSamaExtractor(newClient).videosFromUrl(url = streamUrl,originUrl = baseUrl + originUrl.substringBeforeLast("?"), headers = headers)
                         }
 
                         streamUrl.contains("vk.") -> {
@@ -394,6 +391,14 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         )
 
         return streamSourcesList.sort()
+    }
+
+    override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
+        return client.newCall(episodeRequest(url))
+            .asCancelableObservable()
+            .map {
+                episodeSourcesParse(it,url)
+            }
     }
 
     override fun streamSourcesSelector(): String = throw Exception("Not used")
