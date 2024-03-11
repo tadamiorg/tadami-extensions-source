@@ -14,7 +14,7 @@ data class VostFreePreferences(
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<VostFreePreferences> {
-        const val DEFAULT_BASE_URL = "https://vostfree.ws"
+        const val DEFAULT_BASE_URL = "https://vostfree.in"
         val BASE_URL = stringPreferencesKey("base_url")
 
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
