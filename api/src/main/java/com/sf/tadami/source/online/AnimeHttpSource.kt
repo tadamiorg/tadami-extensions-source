@@ -76,4 +76,13 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
 
     private fun getUrlWithoutDomain(orig: String): String = throw Exception("Stub!")
 
+    /**
+     * Returns the url of the provided episode
+     *
+     * @since extensions-lib 1.1
+     * @param episode the episode
+     * @return url of the episode
+     */
+    open fun getEpisodeUrl(episode: SEpisode): String = throw Exception("Stub!")
+
 }

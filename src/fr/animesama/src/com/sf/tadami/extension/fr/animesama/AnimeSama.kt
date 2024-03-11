@@ -411,6 +411,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", headers)
     }
 
+    override fun getEpisodeUrl(episode: SEpisode): String {
+        return baseUrl + episode.url.substringBeforeLast("?")
+    }
+
     override fun List<StreamSource>.sort(): List<StreamSource> {
         return this.groupBy { it.server.lowercase() }.entries
             .sortedWith(

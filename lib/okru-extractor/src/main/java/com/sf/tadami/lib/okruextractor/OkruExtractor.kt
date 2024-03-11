@@ -27,23 +27,23 @@ class OkruExtractor(private val client: OkHttpClient) {
             ?.attr("data-options")
             ?.substringAfter("\\\"videos\\\":[{\\\"name\\\":\\\"")
             ?.substringBefore("]")
-            ?: return emptyList<StreamSource>()
+            ?: return emptyList()
         return videosString.split("{\\\"name\\\":\\\"").reversed().mapNotNull {
             val videoUrl = it.substringAfter("url\\\":\\\"")
                 .substringBefore("\\\"")
                 .replace("\\\\u0026", "&")
-            val quality = it.substringBefore("\\\"").let {
+            val quality = it.substringBefore("\\\"").let {qual ->
                 if (fixQualities) {
-                    fixQuality(it)
+                    fixQuality(qual.lowercase().trim())
                 } else {
-                    it
+                    qual
                 }
             }
-            val videoQuality = ("Okru - $quality").let {
+            val videoQuality = ("Okru - $quality").let {videoQual ->
                 if (prefix.isNotBlank()) {
-                    "$prefix $it"
+                    "$prefix $videoQual"
                 } else {
-                    it
+                    videoQual
                 }
             }
             if (videoUrl.startsWith("https://")) {

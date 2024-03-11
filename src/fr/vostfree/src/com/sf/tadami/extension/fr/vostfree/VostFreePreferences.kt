@@ -18,12 +18,13 @@ data class VostFreePreferences(
         val BASE_URL = stringPreferencesKey("base_url")
 
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
-            "vudeo" to "Vudeo",
-            "okru" to "Okru",
-            "doodstream" to "Doodstream",
+            "voe" to "Voe",
             "sibnet" to "Sibnet",
+            "doodstream" to "Doodstream",
+            "okru" to "Okru",
+            "vudeo" to "Vudeo",
             "uqload" to "Uqload",
-            "voe" to "Voe"
+
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE = intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))

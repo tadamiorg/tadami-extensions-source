@@ -1,6 +1,7 @@
 package com.sf.tadami.extension.fr.vostfree
 
 import androidx.datastore.preferences.core.intPreferencesKey
+import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.okruextractor.OkruExtractor
@@ -10,6 +11,7 @@ import com.sf.tadami.lib.voeextractor.VoeExtractor
 import com.sf.tadami.lib.vudeoextractor.VudeoExtractor
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.POST
+import com.sf.tadami.network.asCancelableObservable
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.AnimeFilter
 import com.sf.tadami.source.model.AnimeFilterList
@@ -22,6 +24,7 @@ import com.sf.tadami.ui.utils.UiToasts
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
+import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -151,30 +154,35 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
 
-    override fun episodesParse(response: Response): List<SEpisode> {
-        val episodes = mutableListOf<SEpisode>()
-        val jsoup = response.asJsoup()
-        jsoup.select("select.new_player_selector option").forEachIndexed { index, it ->
-            val epNum = it.text().replace("Episode", "").drop(2)
+    override fun episodesParse(response: Response): List<SEpisode> = throw Exception("Not used")
 
-            if (it.text() == "Film") {
-                val episode = SEpisode.create().apply {
-                    episodeNumber = "1".toFloat()
-                    name = "Film"
+    override fun fetchEpisodesList(anime: Anime): Observable<List<SEpisode>> {
+        return client.newCall(episodesRequest(anime))
+            .asCancelableObservable()
+            .map { response ->
+                val episodes = mutableListOf<SEpisode>()
+                val jsoup = response.asJsoup()
+                jsoup.select("select.new_player_selector option").forEachIndexed { index, it ->
+                    val epNum = it.text().replace("Episode", "").drop(2)
+
+                    if (it.text() == "Film") {
+                        val episode = SEpisode.create().apply {
+                            episodeNumber = "1".toFloat()
+                            name = "Film"
+                        }
+                        episode.url = "${anime.url}?episode=${0}"
+                        episodes.add(episode)
+                    } else {
+                        val episode = SEpisode.create().apply {
+                            episodeNumber = epNum.toFloat()
+                            name = "Épisode $epNum"
+                        }
+                        episode.url = "${anime.url}?episode=$index"
+                        episodes.add(episode)
+                    }
                 }
-                episode.url = ("?episode:${0}/${response.request.url}")
-                episodes.add(episode)
-            } else {
-                val episode = SEpisode.create().apply {
-                    episodeNumber = epNum.toFloat()
-                    name = "Épisode $epNum"
-                }
-                episode.setUrlWithoutDomain("?episode:$index/${response.request.url}")
-                episodes.add(episode)
+                episodes.reversed()
             }
-        }
-
-        return episodes.reversed()
     }
 
     override fun streamSourcesSelector(): String = throw Exception("Not used")
@@ -182,53 +190,61 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
     override fun streamSourcesFromElement(element: Element): List<StreamSource> =
         throw Exception("Not used")
 
-    override fun episodeSourcesParse(response: Response): List<StreamSource> {
-        val epNum = response.request.url.toString().substringAfter("$baseUrl/?episode:")
-            .substringBefore("/")
-        val realUrl = response.request.url.toString().replace("$baseUrl/?episode:$epNum/", "")
-
-        val document = client.newCall(GET(realUrl)).execute().asJsoup()
-        val videoList = mutableListOf<StreamSource>()
-        val allPlayerIds = document.select("div.tab-content div div.new_player_top div.new_player_bottom div.button_box")[epNum.toInt()]
-        videoList.addAll(
-            allPlayerIds.select("div").parallelMap { serverDiv ->
-                runCatching {
-                    val server = serverDiv.text().lowercase()
-                    val playerId = serverDiv.attr("id")
-                    val playerFragmentUrl =  document.select("div#player-tabs div.tab-blocks div.tab-content div div#content_$playerId").text()
-                    when (server) {
-                        "vudeo" -> {
-                            val headers = headers.newBuilder()
-                                .set("referer", "https://vudeo.io/")
-                                .build()
-                            VudeoExtractor(client).videosFromUrl(playerFragmentUrl, headers)
-                        }
-                        "ok" -> {
-                            val url = "https://ok.ru/videoembed/$playerFragmentUrl"
-                            OkruExtractor(client).videosFromUrl(url, "", false)
-                        }
-                        "doodstream" -> {
-                            DoodExtractor(client).videosFromUrl(playerFragmentUrl, "DoodStream", false)
-                        }
-                        "sibnet" -> {
-                            val url = "https://video.sibnet.ru/shell.php?videoid=$playerFragmentUrl"
-                            SibnetExtractor(client).videosFromUrl(url)
-                        }
-                        "uqload" -> {
-                            val url = "https://uqload.io/embed-$playerFragmentUrl.html"
-                            UqloadExtractor(client).videosFromUrl(url)
-                        }
-                        "voe" -> {
-                            VoeExtractor(client).videosFromUrl(playerFragmentUrl)
-                        }
-                        else -> null
-                    }
-                }.getOrNull()
-            }.filterNotNull().flatten(),
-        )
-
-        return videoList.sort()
+    override fun getEpisodeUrl(episode: SEpisode): String {
+        return baseUrl + episode.url.substringBeforeLast("?episode=")
     }
+
+    override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
+        return client.newCall(episodeRequest(url))
+            .asCancelableObservable()
+            .map {
+                val epNum = url.substringAfterLast("?episode=")
+                val realUrl = baseUrl + url.substringBeforeLast("?episode=")
+
+                val document = client.newCall(GET(realUrl)).execute().asJsoup()
+                val videoList = mutableListOf<StreamSource>()
+                val allPlayerIds = document.select("div.tab-content div div.new_player_top div.new_player_bottom div.button_box")[epNum.toInt()]
+                videoList.addAll(
+                    allPlayerIds.select("div").parallelMap { serverDiv ->
+                        runCatching {
+                            val server = serverDiv.text().lowercase()
+                            val playerId = serverDiv.attr("id")
+                            val playerFragmentUrl =  document.select("div#player-tabs div.tab-blocks div.tab-content div div#content_$playerId").text()
+                            when (server) {
+                                "vudeo" -> {
+                                    val headers = headers.newBuilder()
+                                        .set("referer", "https://vudeo.io/")
+                                        .build()
+                                    VudeoExtractor(client).videosFromUrl(playerFragmentUrl, headers)
+                                }
+                                "ok" -> {
+                                    val playerUrl = "https://ok.ru/videoembed/$playerFragmentUrl"
+                                    OkruExtractor(client).videosFromUrl(playerUrl, "")
+                                }
+                                "doodstream" -> {
+                                    DoodExtractor(client).videosFromUrl(playerFragmentUrl, "DoodStream", false)
+                                }
+                                "sibnet" -> {
+                                    val playerUrl = "https://video.sibnet.ru/shell.php?videoid=$playerFragmentUrl"
+                                    SibnetExtractor(client).videosFromUrl(playerUrl)
+                                }
+                                "uqload" -> {
+                                    val playerUrl = "https://uqload.io/embed-$playerFragmentUrl.html"
+                                    UqloadExtractor(client).videosFromUrl(playerUrl)
+                                }
+                                "voe" -> {
+                                    VoeExtractor(client).videosFromUrl(playerFragmentUrl)
+                                }
+                                else -> null
+                            }
+                        }.getOrNull()
+                    }.filterNotNull().flatten(),
+                )
+                videoList.sort()
+            }
+    }
+
+    override fun episodeSourcesParse(response: Response): List<StreamSource> = throw Exception("Not used")
 
     override fun getFilterList(): AnimeFilterList {
         return AnimeFilterList(
