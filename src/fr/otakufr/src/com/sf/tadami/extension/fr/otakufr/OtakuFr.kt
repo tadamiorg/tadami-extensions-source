@@ -59,7 +59,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         }
     }
 
-    private suspend fun preferencesMigrations() {
+    private suspend fun preferencesMigrations() : Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -69,7 +69,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
             // Fresh install
             if (oldVersion == 0) {
-                return
+                return false
             }
 
             if(oldVersion < 3){
@@ -79,6 +79,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
                 )
             }
         }
+        return true
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {

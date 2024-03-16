@@ -54,7 +54,8 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
             preferencesMigrations()
         }
     }
-    private suspend fun preferencesMigrations() {
+
+    private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -64,9 +65,10 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
             // Fresh install
             if (oldVersion == 0) {
-                return
+                return false
             }
         }
+        return true
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -93,7 +95,12 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
     override fun searchSelector(): String = "div.search-result, div.movie-poster"
 
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList, noToasts : Boolean): Request {
+    override fun searchAnimeRequest(
+        page: Int,
+        query: String,
+        filters: AnimeFilterList,
+        noToasts: Boolean
+    ): Request {
 
         val genreFilter = filters.find { it is GenreList } as GenreList
         val typeFilter = filters.find { it is TypeList } as TypeList
@@ -108,12 +115,13 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
         return when {
             query.isNotBlank() -> {
                 if (query.length < 4) {
-                    if(!noToasts){
+                    if (!noToasts) {
                         UiToasts.showToast(i18n.getString("vostfree_search_length_error"))
                     }
                 }
                 return POST("$baseUrl/index.php?do=search", headers, formData)
             }
+
             genreFilter.state != 0 -> GET("$baseUrl/genre/${genreFilters[genreFilter.state].second}/page/$page/")
             typeFilter.state != 0 -> GET("$baseUrl/${typeFilters[typeFilter.state].second}/page/$page/")
             else -> GET("$baseUrl/animes-vostfr/page/$page/")
@@ -162,9 +170,14 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
             .map { response ->
                 val episodes = mutableListOf<SEpisode>()
                 val jsoup = response.asJsoup()
-                jsoup.select("select.new_player_selector option").forEachIndexed { index, it ->
+                var lastEpisodeNumber = -1F
+                jsoup.select("select.new_player_selector option").filter { element ->
+                    val epNum = element.text().replace("Episode", "").drop(2)
+                    val isValid = lastEpisodeNumber != epNum.toFloat()
+                    lastEpisodeNumber = epNum.toFloat()
+                    return@filter isValid
+                }.forEachIndexed { index, it ->
                     val epNum = it.text().replace("Episode", "").drop(2)
-
                     if (it.text() == "Film") {
                         val episode = SEpisode.create().apply {
                             episodeNumber = "1".toFloat()
@@ -203,13 +216,16 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
                 val document = client.newCall(GET(realUrl)).execute().asJsoup()
                 val videoList = mutableListOf<StreamSource>()
-                val allPlayerIds = document.select("div.tab-content div div.new_player_top div.new_player_bottom div.button_box")[epNum.toInt()]
+                val allPlayerIds =
+                    document.select("div.tab-content div div.new_player_top div.new_player_bottom div.button_box")[epNum.toInt()]
                 videoList.addAll(
                     allPlayerIds.select("div").parallelMap { serverDiv ->
                         runCatching {
                             val server = serverDiv.text().lowercase()
                             val playerId = serverDiv.attr("id")
-                            val playerFragmentUrl =  document.select("div#player-tabs div.tab-blocks div.tab-content div div#content_$playerId").text()
+                            val playerFragmentUrl =
+                                document.select("div#player-tabs div.tab-blocks div.tab-content div div#content_$playerId")
+                                    .text()
                             when (server) {
                                 "vudeo" -> {
                                     val headers = headers.newBuilder()
@@ -217,24 +233,36 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
                                         .build()
                                     VudeoExtractor(client).videosFromUrl(playerFragmentUrl, headers)
                                 }
+
                                 "ok" -> {
                                     val playerUrl = "https://ok.ru/videoembed/$playerFragmentUrl"
                                     OkruExtractor(client).videosFromUrl(playerUrl, "")
                                 }
+
                                 "doodstream" -> {
-                                    DoodExtractor(client).videosFromUrl(playerFragmentUrl, "DoodStream", false)
+                                    DoodExtractor(client).videosFromUrl(
+                                        playerFragmentUrl,
+                                        "DoodStream",
+                                        false
+                                    )
                                 }
+
                                 "sibnet" -> {
-                                    val playerUrl = "https://video.sibnet.ru/shell.php?videoid=$playerFragmentUrl"
+                                    val playerUrl =
+                                        "https://video.sibnet.ru/shell.php?videoid=$playerFragmentUrl"
                                     SibnetExtractor(client).videosFromUrl(playerUrl)
                                 }
+
                                 "uqload" -> {
-                                    val playerUrl = "https://uqload.io/embed-$playerFragmentUrl.html"
+                                    val playerUrl =
+                                        "https://uqload.io/embed-$playerFragmentUrl.html"
                                     UqloadExtractor(client).videosFromUrl(playerUrl)
                                 }
+
                                 "voe" -> {
                                     VoeExtractor(client).videosFromUrl(playerFragmentUrl)
                                 }
+
                                 else -> null
                             }
                         }.getOrNull()
@@ -244,7 +272,8 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
             }
     }
 
-    override fun episodeSourcesParse(response: Response): List<StreamSource> = throw Exception("Not used")
+    override fun episodeSourcesParse(response: Response): List<StreamSource> =
+        throw Exception("Not used")
 
     override fun getFilterList(): AnimeFilterList {
         return AnimeFilterList(

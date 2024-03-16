@@ -8,6 +8,7 @@ import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
+import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.POST
 import com.sf.tadami.network.asCancelableObservable
@@ -57,7 +58,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         }
     }
 
-    private suspend fun preferencesMigrations() {
+    private suspend fun preferencesMigrations() : Boolean{
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -67,9 +68,21 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
             // Fresh install
             if (oldVersion == 0) {
-                return
+                return false
+            }
+
+            if (oldVersion < 7) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("yourupload")) {
+                    streamOrder.add("yourupload")
+                    dataStore.editPreference(
+                        streamOrder.joinToString(separator = ","),
+                        AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                    )
+                }
             }
         }
+        return true
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -342,9 +355,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             }
     }
 
-    override fun episodeSourcesParse(response: Response): List<StreamSource> = throw Exception("Unused")
+    override fun episodeSourcesParse(response: Response): List<StreamSource> =
+        throw Exception("Unused")
 
-    private fun episodeSourcesParse(response: Response,originUrl : String): List<StreamSource> {
+    private fun episodeSourcesParse(response: Response, originUrl: String): List<StreamSource> {
 
         val document: Document = response.asJsoup()
         val javascriptCode = Html.fromHtml(document.html(), Html.FROM_HTML_MODE_LEGACY).toString()
@@ -377,11 +391,19 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("anime-sama.fr") -> {
-                            AnimeSamaExtractor(newClient).videosFromUrl(url = streamUrl,originUrl = baseUrl + originUrl.substringBeforeLast("?"), headers = headers)
+                            AnimeSamaExtractor(newClient).videosFromUrl(
+                                url = streamUrl,
+                                originUrl = baseUrl + originUrl.substringBeforeLast("?"),
+                                headers = headers
+                            )
                         }
 
                         streamUrl.contains("vk.") -> {
                             VkExtractor(newClient, headers).videosFromUrl(streamUrl)
+                        }
+
+                        streamUrl.contains("yourupload.com") -> {
+                            YourUploadExtractor(newClient).videosFromUrl(streamUrl, headers)
                         }
 
                         else -> null
@@ -397,7 +419,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return client.newCall(episodeRequest(url))
             .asCancelableObservable()
             .map {
-                episodeSourcesParse(it,url)
+                episodeSourcesParse(it, url)
             }
     }
 

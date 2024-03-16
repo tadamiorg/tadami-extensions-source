@@ -20,6 +20,7 @@ data class AnimeSamaPreferences(
             "animesama" to "AnimeSama",
             "sendvid" to "Sendvid",
             "sibnet" to "Sibnet",
+            "yourupload" to "YourUpload",
             "vk" to "Vk"
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")

@@ -55,7 +55,7 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
         return getGogoAnimePreferencesContent(i18n)
     }
 
-    private suspend fun preferencesMigrations() {
+    private suspend fun preferencesMigrations() : Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -65,9 +65,10 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
 
             // Fresh install
             if (oldVersion == 0) {
-                return
+                return false
             }
         }
+        return true
     }
 
     // Latest
