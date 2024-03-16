@@ -10,7 +10,7 @@ class DoodExtractor(private val client: OkHttpClient) {
     fun videoFromUrl(
         url: String,
         quality: String? = null,
-        redirect: Boolean = true,
+        redirect: Boolean = true
     ): StreamSource? {
         val newQuality = quality ?: ("Doodstream" + if (redirect) " Mirror" else "")
 
@@ -31,8 +31,20 @@ class DoodExtractor(private val client: OkHttpClient) {
                     Headers.headersOf("referer", newUrl),
                 ),
             ).execute().body.string()
-            val videoUrl = "$videoUrlStart$randomString?token=$token&expiry=$expiry"
-            StreamSource(url = videoUrl, fullName = newQuality, quality = "", server = "Doodstream", headers = doodHeaders(doodHost))
+
+            val hasUrlParameters = videoUrlStart.substringAfterLast("/").contains("?")
+            var videoUrl = videoUrlStart
+            if(!hasUrlParameters){
+                videoUrl += "$randomString?token=$token&expiry=$expiry"
+            }
+
+            StreamSource(
+                url = videoUrl,
+                fullName = newQuality,
+                quality = "",
+                server = "Doodstream",
+                headers = doodHeaders(doodHost)
+            )
         }.getOrNull()
     }
 

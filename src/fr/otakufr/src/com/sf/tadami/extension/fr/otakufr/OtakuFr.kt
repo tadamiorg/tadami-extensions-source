@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.fr.otakufr.extractors.UpstreamExtractor
 import com.sf.tadami.extension.fr.otakufr.extractors.VidbmExtractor
-import com.sf.tadami.extension.fr.otakufr.overrides.asCancelableObservable
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.okruextractor.OkruExtractor
@@ -14,6 +13,7 @@ import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.streamwishextractor.StreamWishExtractor
 import com.sf.tadami.lib.voeextractor.VoeExtractor
 import com.sf.tadami.network.GET
+import com.sf.tadami.network.asCancelableObservable
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
@@ -102,7 +102,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchLatest(page: Int): Observable<AnimesPage> {
         return client.newCall(latestAnimesRequest(page))
-            .asCancelableObservable(listOf(500))
+            .asCancelableObservable()
             .flatMap { response ->
                 val document = response.asJsoup()
 
@@ -116,7 +116,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
                 val pageRequests = Observable.fromIterable(animeList).flatMap { anime ->
                     client.newCall(GET("$baseUrl${anime.url}"))
-                        .asCancelableObservable(listOf(500))
+                        .asCancelableObservable()
                         .map { response ->
                             val doc = response.asJsoup()
                             val arianne = doc.select("ol.breadcrumb > li.breadcrumb-item:eq(1) a")
@@ -171,7 +171,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchSearch(page: Int, query : String, filters: AnimeFilterList, noToasts : Boolean): Observable<AnimesPage> {
         return client.newCall(searchAnimeRequest(page,query,filters,noToasts))
-            .asCancelableObservable(listOf(500))
+            .asCancelableObservable()
             .map { response ->
                 searchAnimeParse(response)
             }
@@ -202,7 +202,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchAnimeDetails(anime: Anime): Observable<SAnime> {
         return client.newCall(animeDetailsRequest(anime))
-            .asCancelableObservable(listOf(500))
+            .asCancelableObservable()
             .map { response ->
                 animeDetailsParse(response)
             }
@@ -235,7 +235,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchEpisodesList(anime: Anime): Observable<List<SEpisode>> {
         return client.newCall(episodesRequest(anime))
-            .asCancelableObservable(listOf(500))
+            .asCancelableObservable()
             .map { response ->
                 episodesParse(response)
             }
@@ -262,8 +262,15 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val document = response.asJsoup()
 
-        val serversList = document.select("div.tab-content iframe[src]").mapNotNull {
-            val url = it.attr("abs:src")
+        val serversList = document.select("div.tab-content iframe[src], div.tab-content iframe[data-src]").mapNotNull {
+            val src = it.attr("abs:src")
+            val dataSrc = it.attr("abs:data-src")
+
+            val url = when {
+                src.isNotBlank() && src != "about:blank" -> src
+                dataSrc.isNotBlank() && dataSrc != "about:blank" -> dataSrc
+                else -> src
+            }
 
             if (url.contains("parisanime.com")) {
                 val docHeaders = headers.newBuilder().apply {
@@ -296,7 +303,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     private fun getHosterVideos(host: String): List<StreamSource> {
         return when {
             host.startsWith("https://d00") || host.startsWith("https://doo") -> doodExtractor.videosFromUrl(
-                host,
+                url = host,
                 quality = "Doodstream",
                 redirect = false
             )
@@ -318,7 +325,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
         return client.newCall(episodeRequest(url))
-            .asCancelableObservable(listOf(500))
+            .asCancelableObservable()
             .map {
                 episodeSourcesParse(it)
             }
