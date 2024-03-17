@@ -59,7 +59,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         }
     }
 
-    private suspend fun preferencesMigrations() : Boolean {
+    private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -72,7 +72,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
                 return false
             }
 
-            if(oldVersion < 3){
+            if (oldVersion < 3) {
                 dataStore.editPreference(
                     "https://otakufr.cc",
                     stringPreferencesKey(OtakuFrPreferences.BASE_URL.name)
@@ -96,7 +96,15 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         val anime: SAnime = SAnime.create()
         anime.title = ""
         anime.setUrlWithoutDomain(element.select("div.text-center > a.episode-link").attr("href"))
-        anime.thumbnailUrl = element.select("div.text-center > figure > a > img").attr("src")
+        val imageTag = element.selectFirst("div.text-center > figure > a > img")
+        val imageSet = imageTag?.let {
+            it.attr("data-srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
+            it.attr("srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
+            it.attr("data-src").takeIf { src -> src.isNotEmpty() } ?:
+            it.attr("src").takeIf { src -> src.isNotEmpty() && src.contains("http") }
+        }
+        val image = imageSet?.split(",")?.last()?.trim()?.split(" ")?.firstOrNull()
+        anime.thumbnailUrl = image
         return anime
     }
 
@@ -147,7 +155,15 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         val a = element.selectFirst("a.episode-name")!!
 
         return SAnime.create().apply {
-            thumbnailUrl = element.selectFirst("img")!!.attr("src")
+            val imageTag = element.selectFirst("img")
+            val imageSet = imageTag?.let {
+                it.attr("data-srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
+                it.attr("srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
+                it.attr("data-src").takeIf { src -> src.isNotEmpty() } ?:
+                it.attr("src").takeIf { src -> src.isNotEmpty() && src.contains("http") }
+            }
+            val image = imageSet?.split(",")?.last()?.trim()?.split(" ")?.firstOrNull()
+            thumbnailUrl = image
             setUrlWithoutDomain(a.attr("href"))
             title = a.text().trim()
         }
@@ -169,8 +185,13 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         }
     }
 
-    override fun fetchSearch(page: Int, query : String, filters: AnimeFilterList, noToasts : Boolean): Observable<AnimesPage> {
-        return client.newCall(searchAnimeRequest(page,query,filters,noToasts))
+    override fun fetchSearch(
+        page: Int,
+        query: String,
+        filters: AnimeFilterList,
+        noToasts: Boolean
+    ): Observable<AnimesPage> {
+        return client.newCall(searchAnimeRequest(page, query, filters, noToasts))
             .asCancelableObservable()
             .map { response ->
                 searchAnimeParse(response)
@@ -180,8 +201,16 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun animeDetailsParse(document: Document): SAnime {
         val infoDiv = document.selectFirst("article.card div.episode")!!
-
+        val imageTag = document.selectFirst("article.card figure > img")
         return SAnime.create().apply {
+            val imageSet = imageTag?.let {
+                it.attr("data-srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
+                it.attr("srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
+                it.attr("data-src").takeIf { src -> src.isNotEmpty() } ?:
+                it.attr("src").takeIf { src -> src.isNotEmpty() && src.contains("http") }
+            }
+            val image = imageSet?.split(",")?.last()?.trim()?.split(" ")?.firstOrNull()
+            thumbnailUrl = image
             status = infoDiv.selectFirst("li:contains(Statut)")?.ownText()
             genres = infoDiv.select("li:contains(Genre:) ul li").map { it.text() }
             description = buildString {
@@ -262,32 +291,34 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val document = response.asJsoup()
 
-        val serversList = document.select("div.tab-content iframe[src], div.tab-content iframe[data-src]").mapNotNull {
-            val src = it.attr("abs:src")
-            val dataSrc = it.attr("abs:data-src")
+        val serversList =
+            document.select("div.tab-content iframe[src], div.tab-content iframe[data-src]")
+                .mapNotNull {
+                    val src = it.attr("abs:src")
+                    val dataSrc = it.attr("abs:data-src")
 
-            val url = when {
-                src.isNotBlank() && src != "about:blank" -> src
-                dataSrc.isNotBlank() && dataSrc != "about:blank" -> dataSrc
-                else -> src
-            }
+                    val url = when {
+                        src.isNotBlank() && src != "about:blank" -> src
+                        dataSrc.isNotBlank() && dataSrc != "about:blank" -> dataSrc
+                        else -> src
+                    }
 
-            if (url.contains("parisanime.com")) {
-                val docHeaders = headers.newBuilder().apply {
-                    add("Accept", "*/*")
-                    add("Host", url.toHttpUrl().host)
-                    add("Referer", url)
-                    add("X-Requested-With", "XMLHttpRequest")
-                }.build()
+                    if (url.contains("parisanime.com")) {
+                        val docHeaders = headers.newBuilder().apply {
+                            add("Accept", "*/*")
+                            add("Host", url.toHttpUrl().host)
+                            add("Referer", url)
+                            add("X-Requested-With", "XMLHttpRequest")
+                        }.build()
 
-                val newDoc = client.newCall(
-                    GET(url, headers = docHeaders),
-                ).execute().asJsoup()
-                newDoc.selectFirst("div[data-url]")?.attr("data-url")
-            } else {
-                url
-            }
-        }
+                        val newDoc = client.newCall(
+                            GET(url, headers = docHeaders),
+                        ).execute().asJsoup()
+                        newDoc.selectFirst("div[data-url]")?.attr("data-url")
+                    } else {
+                        url
+                    }
+                }
         val streamSourcesList = mutableListOf<StreamSource>()
         streamSourcesList.addAll(
             serversList.parallelMap {
