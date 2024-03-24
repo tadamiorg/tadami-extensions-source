@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.fr.otakufr
 
+import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
@@ -54,8 +55,11 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     private val i18n = i18n(OtakuSamaTranslations)
 
     init {
-        runBlocking {
+        val migrated = runBlocking {
             preferencesMigrations()
+        }
+        if(migrated){
+            Log.i("OtakuFr","Successfully migrated preferences")
         }
     }
 

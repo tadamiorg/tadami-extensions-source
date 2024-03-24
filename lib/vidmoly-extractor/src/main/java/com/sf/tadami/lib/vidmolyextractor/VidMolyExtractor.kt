@@ -17,7 +17,14 @@ class VidmolyExtractor(private val client: OkHttpClient, private val headers: He
             .takeIf(String::isNotBlank)
             ?: return emptyList()
 
-        return playlistUtils.extractFromHls(playlistUrl, url, videoNameGen = { "Vidmoly - $it" }).map {
+        return playlistUtils.extractFromHls(playlistUrl, url, videoNameGen = {
+            val hasQuality = it.isNotBlank()
+            var quality = ""
+            if(hasQuality){
+                quality = "- $it"
+            }
+            "Vidmoly $quality"
+        }).map {
             it.copy(server = "Vidmoly")
         }
     }

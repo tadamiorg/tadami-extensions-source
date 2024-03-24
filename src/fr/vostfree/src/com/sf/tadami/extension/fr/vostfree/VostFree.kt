@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.fr.vostfree
 
+import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.lib.doodextractor.DoodExtractor
@@ -50,8 +51,11 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
     private val i18n = i18n(VostFreeTranslations)
 
     init {
-        runBlocking {
+        val migrated = runBlocking {
             preferencesMigrations()
+        }
+        if(migrated){
+            Log.i("VostFree","Successfully migrated preferences")
         }
     }
 

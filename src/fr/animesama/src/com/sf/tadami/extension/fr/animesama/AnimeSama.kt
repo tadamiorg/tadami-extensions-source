@@ -1,12 +1,13 @@
 package com.sf.tadami.extension.fr.animesama
 
 import android.text.Html
+import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
-import com.sf.tadami.extension.fr.animesama.extractors.AnimeSamaExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
+import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
 import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
 import com.sf.tadami.network.GET
@@ -53,8 +54,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     private val i18n = i18n(AnimeSamaTranslations)
 
     init {
-        runBlocking {
+        val migrated = runBlocking {
             preferencesMigrations()
+        }
+        if(migrated){
+            Log.i("AnimeSama","Successfully migrated preferences")
         }
     }
 
@@ -80,6 +84,21 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         AnimeSamaPreferences.PLAYER_STREAMS_ORDER
                     )
                 }
+            }
+
+            if (oldVersion < 8) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("vidmoly")) {
+                    streamOrder.add("vidmoly")
+                }
+                if(streamOrder.contains("animesama")){
+                    streamOrder.remove("animesama")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                )
             }
         }
         return true
@@ -390,13 +409,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                             SibnetExtractor(newClient).videosFromUrl(streamUrl)
                         }
 
-                        streamUrl.contains("anime-sama.fr") -> {
+                        /*streamUrl.contains("anime-sama.fr") -> {
                             AnimeSamaExtractor(newClient).videosFromUrl(
                                 url = streamUrl,
                                 originUrl = baseUrl + originUrl.substringBeforeLast("?"),
                                 headers = headers
                             )
-                        }
+                        }*/
 
                         streamUrl.contains("vk.") -> {
                             VkExtractor(newClient, headers).videosFromUrl(streamUrl)
@@ -404,6 +423,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
                         streamUrl.contains("yourupload.com") -> {
                             YourUploadExtractor(newClient).videosFromUrl(streamUrl, headers)
+                        }
+                        streamUrl.contains("vidmoly") -> {
+                            VidmolyExtractor(newClient,headers).videosFromUrl(streamUrl)
                         }
 
                         else -> null

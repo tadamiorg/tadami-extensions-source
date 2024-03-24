@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.en.gogoanime
 
+import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.en.gogoanime.filters.GogoAnimeFilters
@@ -46,8 +47,11 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
     private val i18n = i18n(GogoAnimeTranslations)
 
     init {
-        runBlocking {
+        val migrated = runBlocking {
             preferencesMigrations()
+        }
+        if(migrated){
+            Log.i("GogoAnime","Successfully migrated preferences")
         }
     }
 
