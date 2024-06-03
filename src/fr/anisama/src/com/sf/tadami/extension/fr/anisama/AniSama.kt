@@ -187,7 +187,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     private val filemoonExtractor by lazy { FileMoonExtractor(client) }
     private val sibnetExtractor by lazy { SibnetExtractor(client) }
     private val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
-    private val voeExtractor by lazy { VoeExtractor(client) }
+    private val voeExtractor by lazy { VoeExtractor(client,json) }
     /*private val vidCdnExtractor by lazy { VidCdnExtractor(client,json) }*/
     private val doodExtractor by lazy { DoodExtractor(client) }
     private val streamHideVidExtractor by lazy { StreamHideVidExtractor(client) }
@@ -198,8 +198,9 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
         val document = Jsoup.parse(data)
         val epid = response.request.url.toString().substringAfterLast("=")
         val streamSourcesList = mutableListOf<StreamSource>()
+        val deduplicatedData = document.select(streamSourcesSelector()).distinctBy { it.attr("data-id") }
         streamSourcesList.addAll(
-            document.select(streamSourcesSelector()).parallelMap { server ->
+            deduplicatedData.parallelMap { server ->
                 runCatching {
                     val playerRequest = GET("$baseUrl/ajax/episode/sources?id=${server.attr("data-id")}&epid=$epid")
                     val playerResponse = client.newCall(playerRequest).execute().use { pRes -> pRes.body.string() }

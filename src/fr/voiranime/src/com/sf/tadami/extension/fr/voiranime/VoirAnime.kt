@@ -302,7 +302,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
                             when (serverName) {
                                 "LECTEUR VOE" -> {
                                     val iframeUrl = iframeRequest(newClient,baseUrl+url)
-                                    VoeExtractor(client).videosFromUrl(url = iframeUrl)
+                                    VoeExtractor(client,json).videosFromUrl(url = iframeUrl)
                                 }
                                 "LECTEUR myTV" -> {
                                     val iframeUrl = iframeRequest(newClient,baseUrl+url)

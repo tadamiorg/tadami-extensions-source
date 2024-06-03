@@ -27,12 +27,14 @@ import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import uy.kohesive.injekt.injectLazy
 
 class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
     sourceId = 3,
@@ -47,6 +49,7 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
 
     override val client: OkHttpClient = network.cloudflareClient
 
+    private val json: Json by injectLazy()
 
     private val i18n = i18n(VostFreeTranslations)
 
@@ -264,7 +267,7 @@ class VostFree : ConfigurableParsedHttpAnimeSource<VostFreePreferences>(
                                 }
 
                                 "voe" -> {
-                                    VoeExtractor(client).videosFromUrl(playerFragmentUrl)
+                                    VoeExtractor(client,json).videosFromUrl(playerFragmentUrl)
                                 }
 
                                 else -> null

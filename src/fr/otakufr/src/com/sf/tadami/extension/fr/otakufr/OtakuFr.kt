@@ -28,12 +28,14 @@ import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import uy.kohesive.injekt.injectLazy
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -45,6 +47,8 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override val baseUrl: String
         get() = preferences.baseUrl
+
+    private val json: Json by injectLazy()
 
     override val lang: Lang = Lang.FRENCH
 
@@ -289,7 +293,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     private val upstreamExtractor by lazy { UpstreamExtractor(client, headers) }
     private val okruExtractor by lazy { OkruExtractor(client) }
     private val doodExtractor by lazy { DoodExtractor(client) }
-    private val voeExtractor by lazy { VoeExtractor(client) }
+    private val voeExtractor by lazy { VoeExtractor(client,json) }
     private val sibnetExtractor by lazy { SibnetExtractor(client) }
 
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
