@@ -210,7 +210,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                         when {
                             prefix == "VF" -> null
                             /*contains("toonanime.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl,"VidCdn")*/
-                            contains("filemoon.sx") -> filemoonExtractor.videosFromUrl(this, "Filemoon - ")
+                            contains("filemoon.sx") -> filemoonExtractor.videosFromUrl(this, "Filemoon - ",headers)
                             contains("sibnet.ru") -> sibnetExtractor.videosFromUrl(this)
                             contains("sendvid.com") -> sendvidExtractor.videosFromUrl(this)
                             contains("voe.sx") -> voeExtractor.videosFromUrl(this)

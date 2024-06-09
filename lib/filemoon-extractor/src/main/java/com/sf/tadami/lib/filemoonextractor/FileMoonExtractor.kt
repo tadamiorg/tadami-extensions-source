@@ -1,5 +1,6 @@
 package com.sf.tadami.lib.filemoonextractor
 
+import com.sf.tadami.lib.playlistutils.PlaylistUtils
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
@@ -10,9 +11,16 @@ import okhttp3.OkHttpClient
 
 class FileMoonExtractor(private val client: OkHttpClient) {
 
+    private val playlistUtils by lazy { PlaylistUtils(client) }
     fun videosFromUrl(url: String, prefix: String = "Filemoon - ", headers: Headers? = null): List<StreamSource> {
         return runCatching {
-            val doc = client.newCall(GET(url)).execute().asJsoup()
+            val httpUrl = url.toHttpUrl()
+            val videoHeaders = (headers?.newBuilder() ?: Headers.Builder())
+                .set("Referer", url)
+                .set("Origin", "https://${httpUrl.host}")
+                .build()
+
+            val doc = client.newCall(GET(url, videoHeaders)).execute().asJsoup()
             val jsEval = doc.selectFirst("script:containsData(eval):containsData(m3u8)")!!.data()
             val unpacked = JsUnpacker.unpackAndCombine(jsEval).orEmpty()
             val masterUrl = unpacked.takeIf(String::isNotBlank)
@@ -21,27 +29,16 @@ class FileMoonExtractor(private val client: OkHttpClient) {
                 ?.takeIf(String::isNotBlank)
                 ?: return emptyList()
 
-            val masterPlaylist = client.newCall(GET(masterUrl)).execute().body.string()
-
-            val httpUrl = url.toHttpUrl()
-            val videoHeaders = (headers?.newBuilder() ?: Headers.Builder())
-                .set("Referer", url)
-                .set("Origin", "https://${httpUrl.host}")
-                .build()
-
-            val separator = "#EXT-X-STREAM-INF:"
-            masterPlaylist.substringAfter(separator).split(separator).map {
-                val resolution = it.substringAfter("RESOLUTION=")
-                    .substringAfter("x")
-                    .substringBefore(",") + "p"
-                val videoUrl = it.substringAfter("\n").substringBefore("\n")
-
-                StreamSource(
-                    url = videoUrl,
-                    fullName = prefix + resolution,
-                    quality = resolution,
-                    server = "Filemoon",
-                    headers = videoHeaders
+            return playlistUtils.extractFromHls(
+                masterUrl,
+                referer = "https://${httpUrl.host}/",
+                videoNameGen = { "$prefix$it" },
+                videoHeadersGen = { _,referer,_->
+                    playlistUtils.generateMasterHeaders(videoHeaders,referer)
+                }
+            ).map {
+                it.copy(
+                    server = "Filemoon"
                 )
             }
         }.getOrElse { emptyList() }
