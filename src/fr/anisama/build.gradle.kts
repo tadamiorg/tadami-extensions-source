@@ -7,7 +7,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",3)
+        set("extVersionCode",4)
         set("extName","AniSama")
         set("pkgNameSuffix","fr.anisama")
         set("extClass",".AniSama")
@@ -24,5 +24,6 @@ dependencies {
     implementation(project(":lib-dood-extractor"))
     implementation(project(":lib-streamhidevid-extractor"))
     implementation(project(":lib-i18n"))
+    implementation(project(":lib-playlist-utils"))
 }
 

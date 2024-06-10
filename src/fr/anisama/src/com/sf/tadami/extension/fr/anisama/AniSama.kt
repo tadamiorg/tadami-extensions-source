@@ -1,7 +1,9 @@
 package com.sf.tadami.extension.fr.anisama
 
+import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
+import com.sf.tadami.extension.fr.anisama.extractors.VidCdnExtractor
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.filemoonextractor.FileMoonExtractor
 import com.sf.tadami.lib.i18n.i18n
@@ -52,12 +54,15 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     private val i18n = i18n(AnisamaTranslations)
 
     init {
-        runBlocking {
+        val migrated = runBlocking {
             preferencesMigrations()
+        }
+        if(migrated){
+            Log.i("AniSama","Successfully migrated preferences")
         }
     }
 
-    private suspend fun preferencesMigrations() {
+    private suspend fun preferencesMigrations() : Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -67,9 +72,22 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
 
             // Fresh install
             if (oldVersion == 0) {
-                return
+                return false
+            }
+
+            if (oldVersion < 4) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("vidcdn")) {
+                    streamOrder.add("vidcdn")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    AnisamaPreferences.PLAYER_STREAMS_ORDER
+                )
             }
         }
+        return true
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -188,7 +206,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     private val sibnetExtractor by lazy { SibnetExtractor(client) }
     private val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
     private val voeExtractor by lazy { VoeExtractor(client,json) }
-    /*private val vidCdnExtractor by lazy { VidCdnExtractor(client,json) }*/
+    private val vidCdnExtractor by lazy { VidCdnExtractor(client,json) }
     private val doodExtractor by lazy { DoodExtractor(client) }
     private val streamHideVidExtractor by lazy { StreamHideVidExtractor(client) }
 
@@ -209,7 +227,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                     with(playerUrl) {
                         when {
                             prefix == "VF" -> null
-                            /*contains("toonanime.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl,"VidCdn")*/
+                            contains("toonanime.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl)
                             contains("filemoon.sx") -> filemoonExtractor.videosFromUrl(this, "Filemoon - ",headers)
                             contains("sibnet.ru") -> sibnetExtractor.videosFromUrl(this)
                             contains("sendvid.com") -> sendvidExtractor.videosFromUrl(this)

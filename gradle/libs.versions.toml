@@ -17,8 +17,8 @@ jsoup_version = "1.17.2"
 okhttp_version = "5.0.0-alpha.12"
 quickjs_version = "0.9.2"
 # Extensions Api
-datastore_version = "1.0.0"
-navigation-version = "2.6.0"
+datastore_version = "1.1.1"
+navigation-version = "2.7.7"
 
 [libraries]
 # Gradle

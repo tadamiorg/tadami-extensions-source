@@ -17,6 +17,7 @@ data class AnisamaPreferences(
         const val DEFAULT_BASE_URL = "https://v1.anisama.net"
         val BASE_URL = stringPreferencesKey("base_url")
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
+            "vidcdn" to "Vidcdn",
             "sibnet" to "Sibnet",
             "sendvid" to "Sendvid",
             "doodstream" to "DoodStream",
