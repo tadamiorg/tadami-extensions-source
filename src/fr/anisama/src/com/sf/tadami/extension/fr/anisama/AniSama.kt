@@ -86,6 +86,15 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                     AnisamaPreferences.PLAYER_STREAMS_ORDER
                 )
             }
+            if (oldVersion < 5) {
+                val baseUrl = preferences.baseUrl
+                if (baseUrl !== "https://animesz.xyz") {
+                    dataStore.editPreference(
+                        "https://animesz.xyz",
+                        AnisamaPreferences.BASE_URL
+                    )
+                }
+            }
         }
         return true
     }

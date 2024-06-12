@@ -51,6 +51,6 @@ class VidCdnExtractor(
             ).map {
                 it.copy(server = "Vidcdn")
             }
-        }
+        }.filter { source -> source.quality.isNotEmpty() }
     }
 }
