@@ -95,6 +95,16 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                     )
                 }
             }
+
+            if (oldVersion < 6) {
+                val baseUrl = preferences.baseUrl
+                if (baseUrl !== "https://v1.animesz.xyz") {
+                    dataStore.editPreference(
+                        "https://v1.animesz.xyz",
+                        AnisamaPreferences.BASE_URL
+                    )
+                }
+            }
         }
         return true
     }
@@ -237,6 +247,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                         when {
                             prefix == "VF" -> null
                             contains("toonanime.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl)
+                            contains("vidcdn.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl)
                             contains("filemoon.sx") -> filemoonExtractor.videosFromUrl(this, "Filemoon - ",headers)
                             contains("sibnet.ru") -> sibnetExtractor.videosFromUrl(this)
                             contains("sendvid.com") -> sendvidExtractor.videosFromUrl(this)

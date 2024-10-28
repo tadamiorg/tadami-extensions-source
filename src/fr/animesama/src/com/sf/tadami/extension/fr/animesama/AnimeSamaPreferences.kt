@@ -22,7 +22,8 @@ data class AnimeSamaPreferences(
             "vidmoly" to "VidMoly",
             "sendvid" to "Sendvid",
             "vk" to "Vk",
-            "yourupload" to "YourUpload"
+            "yourupload" to "YourUpload",
+            "oneupload" to "OneUpload"
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE = intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))

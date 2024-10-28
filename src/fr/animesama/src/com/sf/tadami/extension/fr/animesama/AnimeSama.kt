@@ -4,6 +4,7 @@ import android.text.Html
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
+import com.sf.tadami.extension.fr.animesama.extractors.OneUploadExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
@@ -93,6 +94,18 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 }
                 if(streamOrder.contains("animesama")){
                     streamOrder.remove("animesama")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                )
+            }
+
+            if (oldVersion < 10) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("oneupload")) {
+                    streamOrder.add("oneupload")
                 }
 
                 dataStore.editPreference(
@@ -426,6 +439,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
                         streamUrl.contains("vidmoly") -> {
                             VidmolyExtractor(newClient,headers).videosFromUrl(streamUrl)
+                        }
+                        streamUrl.contains("oneupload") -> {
+                            OneUploadExtractor(newClient,headers).videosFromUrl(streamUrl)
                         }
 
                         else -> null

@@ -14,7 +14,7 @@ data class AnisamaPreferences(
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<AnisamaPreferences> {
-        const val DEFAULT_BASE_URL = "https://animesz.xyz"
+        const val DEFAULT_BASE_URL = "https://v1.animesz.xyz"
         val BASE_URL = stringPreferencesKey("base_url")
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "vidcdn" to "Vidcdn",
