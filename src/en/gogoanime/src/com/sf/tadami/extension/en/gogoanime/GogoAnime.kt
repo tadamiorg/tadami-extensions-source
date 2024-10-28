@@ -2,6 +2,7 @@ package com.sf.tadami.extension.en.gogoanime
 
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.en.gogoanime.filters.GogoAnimeFilters
 import com.sf.tadami.lib.doodextractor.DoodExtractor
@@ -70,6 +71,13 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
             // Fresh install
             if (oldVersion == 0) {
                 return false
+            }
+
+            if (oldVersion < 6) {
+                dataStore.editPreference(
+                    "https://anitaku.pe",
+                    stringPreferencesKey(GogoAnimePreferences.BASE_URL.name)
+                )
             }
         }
         return true

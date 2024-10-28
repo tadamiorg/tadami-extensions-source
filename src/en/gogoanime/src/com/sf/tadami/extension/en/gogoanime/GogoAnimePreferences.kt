@@ -14,7 +14,7 @@ data class GogoAnimePreferences(
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<GogoAnimePreferences> {
-        const val DEFAULT_BASE_URL = "https://anitaku.to"
+        const val DEFAULT_BASE_URL = "https://anitaku.pe"
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "gogostream" to "GogoStream",
             "vidstreaming" to "VidStreaming",
