@@ -76,8 +76,21 @@ class PlaylistUtils(private val client: OkHttpClient, private val headers: Heade
     ): List<StreamSource> {
         val masterHeaders = masterHeadersGen(headers, referer)
 
-        val masterPlaylist = client.newCall(GET(playlistUrl, masterHeaders)).execute()
-            .use { it.body.string() }
+        val masterPlaylistRequest = client.newCall(GET(playlistUrl, masterHeaders)).execute()
+
+        val isOk =  masterPlaylistRequest.isSuccessful
+
+        if(!isOk){
+            try {
+                masterPlaylistRequest.close()
+            }catch (_: Exception){
+
+            }
+
+            return emptyList()
+        }
+
+       val masterPlaylist =  masterPlaylistRequest .use { it.body.string() }
 
         // Check if there isn't multiple streams available
         if (PLAYLIST_SEPARATOR !in masterPlaylist) {
