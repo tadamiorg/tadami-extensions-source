@@ -24,7 +24,8 @@ data class OtakuFrPreferences(
             "okru" to "Okru",
             "voe" to "Voe",
             "sibnet" to "Sibnet",
-            "upstream" to "Upstream"
+            "upstream" to "Upstream",
+            "luluvdo" to "LuluVdo"
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE = intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))

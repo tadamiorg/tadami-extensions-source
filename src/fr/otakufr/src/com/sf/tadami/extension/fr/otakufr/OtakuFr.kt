@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
+import com.sf.tadami.extension.fr.otakufr.extractors.LuluExtractor
 import com.sf.tadami.extension.fr.otakufr.extractors.UpstreamExtractor
 import com.sf.tadami.extension.fr.otakufr.extractors.VidbmExtractor
 import com.sf.tadami.lib.doodextractor.DoodExtractor
@@ -84,6 +85,18 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
                 dataStore.editPreference(
                     "https://otakufr.cc",
                     stringPreferencesKey(OtakuFrPreferences.BASE_URL.name)
+                )
+            }
+
+            if (oldVersion < 7) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("luluvdo")) {
+                    streamOrder.add("luluvdo")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    OtakuFrPreferences.PLAYER_STREAMS_ORDER
                 )
             }
         }
@@ -295,6 +308,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     private val doodExtractor by lazy { DoodExtractor(client) }
     private val voeExtractor by lazy { VoeExtractor(client,json) }
     private val sibnetExtractor by lazy { SibnetExtractor(client) }
+    private val luluExtractor by lazy { LuluExtractor(client,headers) }
 
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val document = response.asJsoup()
@@ -340,6 +354,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     }
 
     private fun getHosterVideos(host: String): List<StreamSource> {
+        Log.e("Otakufr host",host)
         return when {
             host.startsWith("https://d00") || host.startsWith("https://doo") -> doodExtractor.videosFromUrl(
                 url = host,
@@ -358,6 +373,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
             host.contains("ok.ru") -> okruExtractor.videosFromUrl(host)
             host.contains("upstream") -> upstreamExtractor.videosFromUrl(host)
             host.startsWith("https://voe") -> voeExtractor.videosFromUrl(host)
+            host.contains("luluvdo") -> luluExtractor.videosFromUrl(host)
             else -> emptyList()
         }
     }
