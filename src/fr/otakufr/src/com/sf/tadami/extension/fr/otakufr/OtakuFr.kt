@@ -7,6 +7,7 @@ import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.fr.otakufr.extractors.LuluExtractor
 import com.sf.tadami.extension.fr.otakufr.extractors.UpstreamExtractor
 import com.sf.tadami.extension.fr.otakufr.extractors.VidbmExtractor
+import com.sf.tadami.extension.fr.otakufr.overrides.asCancelableObservable
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.okruextractor.OkruExtractor
@@ -145,7 +146,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
                 val pageRequests = Observable.fromIterable(animeList).flatMap { anime ->
                     client.newCall(GET("$baseUrl${anime.url}"))
-                        .asCancelableObservable()
+                        .asCancelableObservable(listOf(500))
                         .map { response ->
                             val doc = response.asJsoup()
                             val arianne = doc.select("ol.breadcrumb > li.breadcrumb-item:eq(1) a")
@@ -213,7 +214,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
         noToasts: Boolean
     ): Observable<AnimesPage> {
         return client.newCall(searchAnimeRequest(page, query, filters, noToasts))
-            .asCancelableObservable()
+            .asCancelableObservable(listOf(500))
             .map { response ->
                 searchAnimeParse(response)
             }
@@ -252,7 +253,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchAnimeDetails(anime: Anime): Observable<SAnime> {
         return client.newCall(animeDetailsRequest(anime))
-            .asCancelableObservable()
+            .asCancelableObservable(listOf(500))
             .map { response ->
                 animeDetailsParse(response)
             }
@@ -285,7 +286,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchEpisodesList(anime: Anime): Observable<List<SEpisode>> {
         return client.newCall(episodesRequest(anime))
-            .asCancelableObservable()
+            .asCancelableObservable(listOf(500))
             .map { response ->
                 episodesParse(response)
             }
