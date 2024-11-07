@@ -7,7 +7,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",9)
+        set("extVersionCode",10)
         set("extName","OtakuFr")
         set("pkgNameSuffix","fr.otakufr")
         set("extClass",".OtakuFr")

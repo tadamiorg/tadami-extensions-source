@@ -381,7 +381,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
 
     override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
         return client.newCall(episodeRequest(url))
-            .asCancelableObservable()
+            .asCancelableObservable(listOf(500))
             .map {
                 episodeSourcesParse(it)
             }
