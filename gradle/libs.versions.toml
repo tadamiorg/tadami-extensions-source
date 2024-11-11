@@ -8,7 +8,7 @@ serialization_version = "1.7.3"
 # Coroutines
 coroutines_version = "1.9.0"
 # DI
-injekt_version = "65b0440"
+injekt_version = "91edab2317"
 # RXJAVA3
 rxjava3_version = "3.1.8"
 rxjava3_android_version = "3.0.2"
@@ -37,7 +37,7 @@ coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", ve
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines_version" }
 
 # DI
-injekt-core = { module = "com.github.inorichi.injekt:injekt-core", version.ref = "injekt_version" }
+injekt-core = { module = "com.github.mihonapp:injekt", version.ref = "injekt_version" }
 
 # RXJAVA3
 rxjava3 = { group = "io.reactivex.rxjava3", name = "rxjava", version.ref = "rxjava3_version" }
