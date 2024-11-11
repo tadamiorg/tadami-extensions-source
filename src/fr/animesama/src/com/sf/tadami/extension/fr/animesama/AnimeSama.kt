@@ -145,7 +145,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         val titleText = element.selectFirst("h1")?.text() ?: ""
         val lang = element.selectFirst("h1 + hr + div button:first-of-type")?.text()?.trim() ?: ""
         val titleLang = if(lang.lowercase() == "vostfr") "" else "${lang.uppercase(Locale.getDefault())} "
-        val title = "$titleLang $titleText"
+        val title = "$titleLang$titleText"
         val anime: SAnime = SAnime.create()
         anime.title = title
         anime.thumbnailUrl = element.selectFirst("img")?.attr("src")
