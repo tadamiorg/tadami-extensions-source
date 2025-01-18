@@ -1,11 +1,13 @@
 package com.sf.tadami.extension.fr.voiranime
 
+import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
+import com.sf.tadami.App
 import com.sf.tadami.extension.fr.voiranime.recaptcha.IframeDto
-import com.sf.tadami.extension.fr.voiranime.recaptcha.ReCapatchaInterceptor
+import com.sf.tadami.extension.fr.voiranime.recaptcha.interceptor.RecaptchaInterceptorV2
+import com.sf.tadami.lib.filemoonextractor.FileMoonExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.mailruextractor.MailRuExtractor
-import com.sf.tadami.lib.mytvextractor.MytvExtractor
 import com.sf.tadami.lib.streamtapeextractor.StreamTapeExtractor
 import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.voeextractor.VoeExtractor
@@ -21,12 +23,12 @@ import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
 import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
-import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import okhttp3.Call
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,6 +36,7 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.injectLazy
+import java.util.concurrent.CountDownLatch
 
 class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     sourceId = 4,
@@ -253,7 +256,8 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
 
     override fun streamSourcesSelector(): String = throw Exception("Unused")
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> = throw Exception("Unused")
+    override fun streamSourcesFromElement(element: Element): List<StreamSource> =
+        throw Exception("Unused")
 
     override fun episodesSelector(): String = "li.wp-manga-chapter"
 
@@ -261,7 +265,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
 
     private fun episodeFromElementCustom(element: Element, index: Int): SEpisode {
         val episode = SEpisode.create()
-        episode.setUrlWithoutDomain(element.select("a").attr("href").substringAfter(" "))
+        episode.setUrlWithoutDomain(element.select("a").attr("href").removeSuffix("/"))
         episode.name = element.select("a").text().trim()
         episode.episodeNumber = if (element.select("a").text().contains("film", true)) {
             index.toFloat()
@@ -273,6 +277,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     }
 
     override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
+        val callMap = mutableMapOf<String, Pair<Call, CountDownLatch>>()
         return client.newCall(GET(baseUrl + url, headers)).asCancelableObservable().map { res ->
             val document = res.asJsoup()
 
@@ -282,62 +287,88 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
             val streamSourcesList = mutableListOf<StreamSource>()
             streamSourcesList.addAll(
                 document.select("#manga-reading-nav-foot select.host-select > option")
-                    .parallelMap { server ->
-
-                        runCatching {
+                    .map { server ->
+                        try {
                             val serverName = server.attr("value")
+                            val latch = CountDownLatch(1)
                             val newClient = client
                                 .newBuilder()
                                 .addInterceptor(
-                                    ReCapatchaInterceptor(
-                                        client = client,
-                                        baseUrl = baseUrl,
-                                        url = "$url?host=$serverName",
-                                        headers = headers.newBuilder().add("User-Agent", getRandomUA()).build(),
-                                        host = serverName,
+                                    RecaptchaInterceptorV2(
+                                        context = App.getAppContext()!!,
                                         animeId = animeId,
-                                        episodeId = episodeId
+                                        episodeId = episodeId,
+                                        host = serverName,
+                                        ajaxUrl = "$baseUrl/wp-admin/admin-ajax.php",
+                                        latch = latch
                                     )
                                 ).build()
+
+                            val call = newClient.newCall(
+                                GET(
+                                    baseUrl + url,
+                                    headersBuilder().add(
+                                        "User-Agent",
+                                        getRandomUA()
+                                    ).build()
+                                )
+                            )
+                            callMap[serverName] = Pair(call, latch)
+                            val iframeUrl = iframeRequest(call)
+
                             when (serverName) {
                                 "LECTEUR VOE" -> {
-                                    val iframeUrl = iframeRequest(newClient,baseUrl+url)
-                                    VoeExtractor(client,json).videosFromUrl(url = iframeUrl)
+                                    VoeExtractor(client, json).videosFromUrl(url = iframeUrl)
                                 }
+
                                 "LECTEUR myTV" -> {
-                                    val iframeUrl = iframeRequest(newClient,baseUrl+url)
-                                    MytvExtractor(client).videosFromUrl(url = iframeUrl)
+                                    VidmolyExtractor(
+                                        client,
+                                        headers
+                                    ).videosFromUrl(url = iframeUrl)
+
                                 }
+
                                 "LECTEUR YU" -> {
-                                    val iframeUrl = iframeRequest(newClient,baseUrl+url)
-                                    YourUploadExtractor(client).videosFromUrl(url = iframeUrl,headers = headers)
+                                    YourUploadExtractor(client).videosFromUrl(
+                                        url = iframeUrl,
+                                        headers = headers
+                                    )
                                 }
+
                                 "LECTEUR MOON" -> {
-                                    val iframeUrl = iframeRequest(newClient,baseUrl+url)
-                                    VidmolyExtractor(client,headers).videosFromUrl(url = iframeUrl)
+                                    FileMoonExtractor(client).videosFromUrl(url = iframeUrl)
                                 }
+
                                 "LECTEUR Stape" -> {
-                                    val iframeUrl = iframeRequest(newClient,baseUrl+url)
                                     StreamTapeExtractor(client).videosFromUrl(url = iframeUrl)
                                 }
+
                                 "LECTEUR FHD1" -> {
-                                    val iframeUrl = iframeRequest(newClient,baseUrl+url)
-                                    MailRuExtractor(client,headers).videosFromUrl(url = iframeUrl)
+                                    MailRuExtractor(client, headers).videosFromUrl(url = iframeUrl)
                                 }
 
                                 else -> null
                             }
-                        }.getOrNull()
+                        } catch (e: Exception) {
+                            Log.e("VoirAnime", e.stackTraceToString())
+                        }
+
+                        return@map null
                     }.filterNotNull().flatten(),
             )
-
             streamSourcesList.sort()
-
+        }.doOnDispose {
+            callMap.values.forEach {
+                it.second.countDown()
+                it.first.cancel()
+            }
+            callMap.clear()
         }
     }
 
-    private fun iframeRequest(customClient : OkHttpClient,url : String) : String{
-        val iframeResponse = customClient.newCall(GET(url)).execute().use { it.body.string() }
+    private fun iframeRequest(call: Call): String {
+        val iframeResponse = call.execute().use { it.body.string() }
         val data = json.decodeFromString<IframeDto>(iframeResponse).data
         return data.substringAfter("src=\"").substringBefore("\"")
     }

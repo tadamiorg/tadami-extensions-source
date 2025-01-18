@@ -2,7 +2,6 @@ package com.sf.tadami.lib.vidmolyextractor
 
 import com.sf.tadami.lib.playlistutils.PlaylistUtils
 import com.sf.tadami.network.GET
-import com.sf.tadami.network.await
 import com.sf.tadami.source.model.StreamSource
 import okhttp3.Headers
 import okhttp3.OkHttpClient
@@ -10,12 +9,8 @@ import okhttp3.OkHttpClient
 class VidmolyExtractor(private val client: OkHttpClient, private val headers: Headers) {
     private val playlistUtils by lazy { PlaylistUtils(client, headers) }
 
-    suspend fun videosFromUrl(url: String): List<StreamSource> {
-        val videoHeaders = headers.newBuilder()
-            .set("sec-fetch-dest", "iframe")
-            .set("sec-ch-ua-platform", "\"Windows\"")
-            .build()
-        val body = client.newCall(GET(url, videoHeaders)).await().body.string()
+    fun videosFromUrl(url: String): List<StreamSource> {
+        val body = client.newCall(GET(url)).execute().body.string()
 
         val playlistUrl = body.substringAfter("file:\"", "").substringBefore('"', "")
             .takeIf(String::isNotBlank)
@@ -33,7 +28,7 @@ class VidmolyExtractor(private val client: OkHttpClient, private val headers: He
                 "Vidmoly $quality"
             },
             videoHeadersGen = { _,referer,_->
-                playlistUtils.generateMasterHeaders(videoHeaders,referer)
+                playlistUtils.generateMasterHeaders(headers,referer)
             }
         ).map {
             it.copy(server = "Vidmoly")

@@ -14,7 +14,7 @@ data class VoirAnimePreferences(
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<VoirAnimePreferences> {
-        const val DEFAULT_BASE_URL = "https://v5.voiranime.com"
+        const val DEFAULT_BASE_URL = "https://v6.voiranime.com"
         val BASE_URL = stringPreferencesKey("base_url")
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "voe" to "Voe",

@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":lib-streamtape-extractor"))
     implementation(project(":lib-mailru-extractor"))
     implementation(project(":lib-yourupload-extractor"))
+    implementation(project(":lib-filemoon-extractor"))
     implementation(project(":lib-i18n"))
 }
 
