@@ -18,7 +18,7 @@ data class AnimePahePreferences(
 
     companion object : CustomPreferences<AnimePahePreferences> {
         const val DEFAULT_BASE_URL = "https://animepahe.com"
-        const val DEFAULT_USE_HLS_LINKS = false
+        const val DEFAULT_USE_HLS_LINKS = true
         const val DEFAULT_ENGLISH_DUB = true
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "kwik" to "Kwik"
