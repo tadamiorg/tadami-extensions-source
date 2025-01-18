@@ -486,24 +486,18 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                             SibnetExtractor(newClient).videosFromUrl(streamUrl)
                         }
 
-                        /*streamUrl.contains("anime-sama.fr") -> {
-                            AnimeSamaExtractor(newClient).videosFromUrl(
-                                url = streamUrl,
-                                originUrl = baseUrl + originUrl.substringBeforeLast("?"),
-                                headers = headers
-                            )
-                        }*/
-
-                        streamUrl.contains("vk.") -> {
+                        streamUrl.contains("vkvideo.ru") -> {
                             VkExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
 
                         streamUrl.contains("yourupload.com") -> {
                             YourUploadExtractor(newClient).videosFromUrl(streamUrl, headers)
                         }
+
                         streamUrl.contains("vidmoly") -> {
                             VidmolyExtractor(newClient,headers).videosFromUrl(streamUrl)
                         }
+
                         streamUrl.contains("oneupload") -> {
                             OneUploadExtractor(newClient,headers).videosFromUrl(streamUrl)
                         }

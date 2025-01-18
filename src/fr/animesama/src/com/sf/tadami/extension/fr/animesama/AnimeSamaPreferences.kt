@@ -17,13 +17,13 @@ data class AnimeSamaPreferences(
         const val DEFAULT_BASE_URL = "https://anime-sama.fr"
         val BASE_URL = stringPreferencesKey("base_url")
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
-            /*"animesama" to "AnimeSama",*/
             "sibnet" to "Sibnet",
             "vidmoly" to "VidMoly",
             "sendvid" to "Sendvid",
             "vk" to "Vk",
+            "oneupload" to "OneUpload",
             "yourupload" to "YourUpload",
-            "oneupload" to "OneUpload"
+
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE = intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))
