@@ -6,9 +6,7 @@ import com.sf.tadami.source.model.StreamSource
 import dev.datlag.jsunpacker.JsUnpacker
 import okhttp3.OkHttpClient
 
-class StreamHideVidExtractor(
-    private val client: OkHttpClient
-) {
+class StreamHideVidExtractor(private val client: OkHttpClient) {
 
     private val playlistUtils by lazy { PlaylistUtils(client) }
 

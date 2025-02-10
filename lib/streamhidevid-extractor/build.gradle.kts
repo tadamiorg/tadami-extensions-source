@@ -25,7 +25,7 @@ val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()
 dependencies {
     compileOnly(project(":api"))
     compileOnly(libs.bundles.common)
-    implementation(project(":lib-playlist-utils"))
+    implementation(project(":lib:playlist-utils"))
     implementation("dev.datlag.jsunpacker:jsunpacker:1.0.1"){
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
     }

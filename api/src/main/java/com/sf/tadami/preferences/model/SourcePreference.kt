@@ -53,9 +53,7 @@ sealed class SourcePreference {
             override val enabled: Boolean = true,
             val overrideOkButton : Boolean = false,
             override val onValueChanged: (newValue: Set<String>) -> Boolean = { true },
-            val subtitleProvider : () -> String? = {
-                ""
-            },
+            val subtitleProvider : (currentValue : Set<String>) -> String? = throw Exception("Stub !"),
         ) : PreferenceItem<Set<String>>()
 
         data class EditTextPreference(
