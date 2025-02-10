@@ -158,7 +158,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     // ============================== Search ===============================
     override fun searchSelector(): String =
-        "div.cardListAnime"
+        "#list_catalog > div"
 
     override fun fetchSearch(
         page: Int,
@@ -252,14 +252,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
         return when {
             query.isNotEmpty() -> {
-                val formData = FormBody.Builder()
-                    .add("query", query)
-                    .build()
-                POST("$baseUrl/catalogue/searchbar.php", headers, formData)
+                GET("$baseUrl/catalogue/?type[]=Anime&search=$query&page=$page", headers)
             }
 
             else -> {
-                GET("$baseUrl/catalogue/index.php?page=$page", headers)
+                GET("$baseUrl/catalogue/?type[]=Anime&page=$page", headers)
             }
         }
     }
