@@ -268,7 +268,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
 
-    override fun searchAnimeNextPageSelector(): String = "div#nav_pages a.bg-sky-900 ~ a"
+    override fun searchAnimeNextPageSelector(): String = "div#list_pagination a.bg-sky-900 ~ a"
 
 
     // ============================== Anime Details ===============================
