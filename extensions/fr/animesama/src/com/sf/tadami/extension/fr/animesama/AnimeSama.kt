@@ -13,7 +13,6 @@ import com.sf.tadami.lib.vkextractor.VkExtractor
 import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.HEAD
-import com.sf.tadami.network.POST
 import com.sf.tadami.network.asCancelableObservable
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.network.shortTimeOutBuilder
@@ -29,7 +28,6 @@ import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
-import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -158,7 +156,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     // ============================== Search ===============================
     override fun searchSelector(): String =
-        "div.cardListAnime"
+        "#list_catalog > div"
 
     override fun fetchSearch(
         page: Int,
@@ -252,14 +250,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
         return when {
             query.isNotEmpty() -> {
-                val formData = FormBody.Builder()
-                    .add("query", query)
-                    .build()
-                POST("$baseUrl/catalogue/searchbar.php", headers, formData)
+                GET("$baseUrl/catalogue/?type[]=Anime&search=$query&page=$page", headers)
             }
 
             else -> {
-                GET("$baseUrl/catalogue/index.php?page=$page", headers)
+                GET("$baseUrl/catalogue/?type[]=Anime&page=$page", headers)
             }
         }
     }
@@ -273,7 +268,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
 
-    override fun searchAnimeNextPageSelector(): String = "div#nav_pages a.bg-sky-900 ~ a"
+    override fun searchAnimeNextPageSelector(): String = "div#list_pagination a.bg-sky-900 ~ a"
 
 
     // ============================== Anime Details ===============================
