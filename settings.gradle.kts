@@ -1,37 +1,47 @@
 include(":core")
 include(":api")
 
-// Load all modules under /lib
-File(rootDir, "lib").eachDir { include("lib:${it.name}") }
+// Load all modules under /libs
+File(rootDir, "lib").eachDir {
+    val libName = it.name
+    include(":lib-$libName")
+    project(":lib-$libName").projectDir = File("lib/$libName")
+}
 
-File(rootDir, "lib-multiexts").eachDir { include("lib-multiexts:${it.name}") }
-
-if (System.getenv("CI") != "true") {
-    /**
-     * Add or remove modules to load as needed for local development here.
-     */
-    loadAllIndividualExtensions()
+if (System.getenv("CI") == null || System.getenv("CI_MODULE_GEN") == "true") {
+    // Local development (full project build)
+    loadAllExtensions()
 } else {
     // Running in CI (GitHub Actions)
 
     val chunkSize = System.getenv("CI_CHUNK_SIZE").toInt()
     val chunk = System.getenv("CI_CHUNK_NUM").toInt()
 
-    // Loads individual extensions
-    File(rootDir, "extensions").getChunk(chunk, chunkSize)?.forEach {
-        loadIndividualExtension(it.parentFile.name, it.name)
+
+    // Loads extensions
+    File(rootDir, "src").getChunk(chunk, chunkSize)?.forEach {
+        val name = ":extensions:${it.parentFile.name}:${it.name}"
+        println(name)
+        include(name)
+        project(name).projectDir = File("src/${it.parentFile.name}/${it.name}")
     }
+
 }
 
-fun loadAllIndividualExtensions() {
-    File(rootDir, "extensions").eachDir { dir ->
+fun loadAllExtensions() {
+    File(rootDir, "src").eachDir { dir ->
         dir.eachDir { subdir ->
-            loadIndividualExtension(dir.name, subdir.name)
+            val name = ":extensions:${dir.name}:${subdir.name}"
+            include(name)
+            project(name).projectDir = File("src/${dir.name}/${subdir.name}")
         }
     }
 }
-fun loadIndividualExtension(lang: String, name: String) {
-    include("extensions:$lang:$name")
+
+fun loadExtension(lang: String, name: String) {
+    val projectName = ":extensions:$lang:$name"
+    include(projectName)
+    project(projectName).projectDir = File("src/${lang}/${name}")
 }
 
 fun File.getChunk(chunk: Int, chunkSize: Int): List<File>? {
@@ -47,15 +57,10 @@ fun File.getChunk(chunk: Int, chunkSize: Int): List<File>? {
 }
 
 fun File.eachDir(block: (File) -> Unit) {
-    val files = listFiles() ?: return
-    for (file in files) {
-        if (file.isDirectory && file.name != ".gradle" && file.name != "build") {
-            block(file)
-        }
-    }
+    listFiles()?.filter { it.isDirectory }?.forEach { block(it) }
 }
-
 dependencyResolutionManagement {
+
     versionCatalogs {
         create("build") {
             from(files("gradle/build.versions.toml"))

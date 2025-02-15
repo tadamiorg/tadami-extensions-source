@@ -1,91 +1,116 @@
 package com.sf.tadami.lib.chillxextractor
 
-import com.sf.tadami.lib.playlistutils.PlaylistUtils
-import com.sf.tadami.lib.tadamiutils.parseAs
+import android.util.Base64
 import com.sf.tadami.network.GET
+import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
-import com.sf.tadami.source.model.Track
-import eu.kanade.tachiyomi.lib.cryptoaes.CryptoAES
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
-import uy.kohesive.injekt.injectLazy
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
 class ChillxExtractor(private val client: OkHttpClient, private val headers: Headers) {
-    private val json: Json by injectLazy()
-    private val playlistUtils by lazy { PlaylistUtils(client, headers) }
-
-    companion object {
-        private val REGEX_MASTER_JS = Regex("""\s*=\s*'([^']+)""")
-        private val REGEX_SOURCES = Regex("""sources:\s*\[\{"file":"([^"]+)""")
-        private val REGEX_FILE = Regex("""file: ?"([^"]+)"""")
-        private val REGEX_SOURCE = Regex("""source = ?"([^"]+)"""")
-        private val REGEX_SUBS = Regex("""\{"file":"([^"]+)","label":"([^"]+)","kind":"captions","default":\w+\}""")
-        private const val KEY_SOURCE = "https://raw.githubusercontent.com/Rowdy-Avocado/multi-keys/keys/index.html"
-    }
 
     fun videoFromUrl(url: String, referer: String, prefix: String = "Chillx - "): List<StreamSource> {
-        val newHeaders = headers.newBuilder()
-            .set("Referer", "$referer/")
-            .set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-            .set("Accept-Language", "en-US,en;q=0.5")
-            .build()
+        val videoList = mutableListOf<StreamSource>()
+        val mainUrl = "https://${url.toHttpUrl().host}"
 
-        val body = client.newCall(GET(url, newHeaders)).execute().body.string()
+        val document = client.newCall(
+            GET(url, headers = Headers.headersOf("Referer", "$referer/"))
+        ).execute().asJsoup().html()
 
-        val master = REGEX_MASTER_JS.find(body)?.groupValues?.get(1) ?: return emptyList()
-        val aesJson = json.decodeFromString<CryptoInfo>(master)
-        val key = fetchKey() ?: throw ErrorLoadingException("Unable to get key")
-        val decryptedScript = CryptoAES.decryptWithSalt(aesJson.ciphertext, aesJson.salt, key)
-            .replace("\\n", "\n")
-            .replace("\\", "")
+        val master = Regex("""MasterJS\s*=\s*'([^']+)""").find(document)?.groupValues?.get(1)
+        val aesJson = Json.decodeFromString<CryptoInfo>(base64Decode(master ?: return emptyList()).toString(Charsets.UTF_8))
 
-        val masterUrl = REGEX_SOURCES.find(decryptedScript)?.groupValues?.get(1)
-            ?: REGEX_FILE.find(decryptedScript)?.groupValues?.get(1)
-            ?: REGEX_SOURCE.find(decryptedScript)?.groupValues?.get(1)
+        val decrypt = cryptoAESHandler(aesJson, KEY)
+
+        val masterUrl = Regex("""sources:\s*\[\{"file":"([^"]+)""").find(decrypt)?.groupValues?.get(1)
+            ?: Regex("""file: ?"([^"]+)"""").find(decrypt)?.groupValues?.get(1)
             ?: return emptyList()
 
-        val subtitleList = buildList {
-            val subtitles = REGEX_SUBS.findAll(decryptedScript)
-            subtitles.forEach {
-                add(Track.SubtitleTrack(url = it.groupValues[1], lang = decodeUnicodeEscape(it.groupValues[2]), mimeType = "text/vtt"))
+        val masterHeaders = Headers.headersOf(
+            "Accept", "*/*",
+            "Connection", "keep-alive",
+            "Sec-Fetch-Dest", "empty",
+            "Sec-Fetch-Mode", "cors",
+            "Sec-Fetch-Site", "cross-site",
+            "Origin", mainUrl,
+            "Referer", "$mainUrl/",
+        )
+
+        val response = client.newCall(GET(masterUrl, headers = masterHeaders)).execute()
+
+        val masterPlaylist = response.body.string()
+        val masterBase = "https://${masterUrl.toHttpUrl().host}${masterUrl.toHttpUrl().encodedPath}"
+            .substringBeforeLast("/") + "/"
+
+        masterPlaylist.substringAfter("#EXT-X-STREAM-INF:")
+            .split("#EXT-X-STREAM-INF:").map {
+                val quality = it.substringAfter("RESOLUTION=").split(",")[0].split("\n")[0].substringAfter("x") + "p"
+
+                var videoUrl = it.substringAfter("\n").substringBefore("\n")
+                if (videoUrl.startsWith("https").not()) {
+                    videoUrl = masterBase + videoUrl
+                }
+                val videoHeaders = headers.newBuilder()
+                    .addAll(masterHeaders)
+                    .build()
+
+
+                videoList.add(StreamSource(url = videoUrl, fullName = prefix + quality, server = "Chillx", quality = quality, headers = videoHeaders))
+
             }
-        }
-
-        return playlistUtils.extractFromHls(
-            playlistUrl = masterUrl,
-            referer = url,
-            videoNameGen = { "$prefix$it" },
-            subtitleList = subtitleList,
-        ).map {
-            it.copy(server = "Chillx")
-        }
+        return videoList
     }
 
-    @OptIn(ExperimentalSerializationApi::class)
-    private fun fetchKey(): String? {
-        return client.newCall(GET(KEY_SOURCE)).execute().parseAs()
+    private fun cryptoAESHandler(
+        data: CryptoInfo,
+        pass: String,
+    ): String {
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
+        val spec = PBEKeySpec(
+            pass.toCharArray(),
+            data.salt?.hexToByteArray(),
+            data.iterations ?: 1,
+            256
+        )
+        val key = factory.generateSecret(spec)
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(key.encoded, "AES"),
+            IvParameterSpec(data.iv?.hexToByteArray())
+        )
+        return String(cipher.doFinal(base64Decode(data.ciphertext.toString())))
     }
 
-    private fun decodeUnicodeEscape(input: String): String {
-        val regex = Regex("u([0-9a-fA-F]{4})")
-        return regex.replace(input) {
-            it.groupValues[1].toInt(16).toChar().toString()
-        }
+    private fun base64Decode(string: String): ByteArray {
+        return Base64.decode(string, Base64.DEFAULT)
     }
 
     @Serializable
     data class CryptoInfo(
-        @SerialName("ct") val ciphertext: String,
-        @SerialName("s") val salt: String,
+        val ciphertext: String? = null,
+        val iv: String? = null,
+        val salt: String? = null,
+        val iterations: Int? = null,
     )
 
-    @Serializable
-    data class KeysData(
-        @SerialName("chillx") val keys: List<String>
-    )
+    private fun String.hexToByteArray(): ByteArray {
+        check(length % 2 == 0) { "Must have an even length" }
+        return chunked(2)
+            .map { it.toInt(16).toByte() }
+
+            .toByteArray()
+    }
+
+    companion object {
+        private const val KEY = "11x&W5UBrcqn\$9Yl"
+    }
 }
-class ErrorLoadingException(message: String) : Exception(message)

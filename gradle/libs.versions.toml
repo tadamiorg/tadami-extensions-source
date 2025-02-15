@@ -31,7 +31,6 @@ gradle-dotenv = { module="co.uzzu.dotenv:gradle", version.ref = "dotenv_version"
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlin_version" }
 kotlin-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "serialization_version" }
 kotlin-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization_version" }
-kotlin-json-okio = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-okio", version.ref = "serialization_version" }
 
 # Coroutines
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines_version" }
@@ -60,7 +59,6 @@ common = [
     "rxjava3",
     "kotlin-protobuf",
     "kotlin-json",
-    "kotlin-json-okio",
     "jsoup",
     "okhttp",
     "quickjs",

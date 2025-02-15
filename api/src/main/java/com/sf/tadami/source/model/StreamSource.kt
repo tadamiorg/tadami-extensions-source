@@ -14,32 +14,8 @@ data class StreamSource(
     val quality: String = "",
     val server: String = "",
     @Serializable(with = OkhttpHeadersSerializer::class)
-    val headers: Headers? = null,
-    val subtitleTracks: List<Track.SubtitleTrack> = emptyList(),
-    val audioTracks: List<Track.AudioTrack> = emptyList()
+    val headers: Headers? = null
 )
-
-sealed class Track {
-    abstract val url: String
-    abstract val lang : String
-
-    @Serializable
-    data class SubtitleTrack(
-        override val url: String,
-        override val lang: String,
-        val mimeType: String = throw Exception("Stub !")
-    ) : Track()
-
-    @Serializable
-    data class AudioTrack(
-        override val url: String,
-        override val lang: String,
-    ) : Track()
-}
-
-
-
-
 
 object OkhttpHeadersSerializer : KSerializer<Headers?> {
     override val descriptor: SerialDescriptor = throw Exception("Stub")
