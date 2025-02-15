@@ -2,6 +2,7 @@ package com.sf.tadami.lib.doodextractor
 
 import com.sf.tadami.network.GET
 import com.sf.tadami.source.model.StreamSource
+import com.sf.tadami.source.model.Track
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 
@@ -10,9 +11,10 @@ class DoodExtractor(private val client: OkHttpClient) {
     fun videoFromUrl(
         url: String,
         quality: String? = null,
-        redirect: Boolean = true
+        redirect: Boolean = true,
+        externalSubs: List<Track.SubtitleTrack> = emptyList(),
     ): StreamSource? {
-        val newQuality = quality ?: ("Doodstream" + if (redirect) " Mirror" else "")
+        val newQuality = quality ?: ("Doodstream" + if (redirect) " mirror" else "")
 
         return runCatching {
             val response = client.newCall(GET(url)).execute()
@@ -31,19 +33,14 @@ class DoodExtractor(private val client: OkHttpClient) {
                     Headers.headersOf("referer", newUrl),
                 ),
             ).execute().body.string()
-
-            val hasUrlParameters = videoUrlStart.substringAfterLast("/").contains("?")
-            var videoUrl = videoUrlStart
-            if(!hasUrlParameters){
-                videoUrl += "$randomString?token=$token&expiry=$expiry"
-            }
-
+            val videoUrl = "$videoUrlStart$randomString?token=$token&expiry=$expiry"
             StreamSource(
                 url = videoUrl,
                 fullName = newQuality,
                 quality = "",
                 server = "Doodstream",
-                headers = doodHeaders(doodHost)
+                headers = doodHeaders(doodHost),
+                subtitleTracks = externalSubs
             )
         }.getOrNull()
     }
@@ -54,7 +51,7 @@ class DoodExtractor(private val client: OkHttpClient) {
         redirect: Boolean = true,
     ): List<StreamSource> {
         val video = videoFromUrl(url, quality, redirect)
-        return video?.let(::listOf) ?: emptyList<StreamSource>()
+        return video?.let(::listOf) ?: emptyList()
     }
 
     private fun getRandomString(length: Int = 10): String {
@@ -65,7 +62,7 @@ class DoodExtractor(private val client: OkHttpClient) {
     }
 
     private fun doodHeaders(host: String) = Headers.Builder().apply {
-        add("User-Agent", "Tadami")
+        add("User-Agent", "Aniyomi")
         add("Referer", "https://$host/")
     }.build()
 }

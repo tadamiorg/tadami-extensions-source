@@ -3,11 +3,11 @@ package com.sf.tadami.lib.streamtapeextractor
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
+import com.sf.tadami.source.model.Track
 import okhttp3.OkHttpClient
 
 class StreamTapeExtractor(private val client: OkHttpClient) {
-
-    fun videoFromUrl(url: String, quality: String = "Streamtape"): StreamSource? {
+    fun videoFromUrl(url: String, quality: String = "Streamtape", subtitleList: List<Track.SubtitleTrack> = emptyList()): StreamSource? {
         val baseUrl = "https://streamtape.com/e/"
         val newUrl = if (!url.startsWith(baseUrl)) {
             // ["https", "", "<domain>", "<???>", "<id>", ...]
@@ -24,10 +24,10 @@ class StreamTapeExtractor(private val client: OkHttpClient) {
         val videoUrl = "https:" + script.substringBefore("'") +
                 script.substringAfter("+ ('xcd").substringBefore("'")
 
-        return StreamSource(url = videoUrl, fullName = quality, server = "StreamTape")
+        return StreamSource(url = videoUrl, fullName = quality, server = "StreamTape", subtitleTracks = subtitleList)
     }
 
-    fun videosFromUrl(url: String, quality: String = "Streamtape"): List<StreamSource> {
-        return videoFromUrl(url, quality)?.let(::listOf).orEmpty()
+    fun videosFromUrl(url: String, quality: String = "Streamtape", subtitleList: List<Track.SubtitleTrack> = emptyList()): List<StreamSource> {
+        return videoFromUrl(url, quality, subtitleList)?.let(::listOf).orEmpty()
     }
 }
