@@ -28,7 +28,6 @@ class WebViewResolver(private val globalHeaders: Headers) {
 
         @JavascriptInterface
         fun setResponse(response: String) {
-            Log.d("WebViewResolver", "script result: $response")
             result = response
             latch.countDown()
         }
@@ -60,10 +59,8 @@ class WebViewResolver(private val globalHeaders: Headers) {
 
             webview.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    Log.d(tag, "onPageFinished $url")
                     super.onPageFinished(view, url)
 
-                    Log.d(tag, "injecting scripts")
                     view?.evaluateJavascript(getJsContent("/assets/crypto-js.js")) {}
                     view?.evaluateJavascript(getJsContent("/assets/megacloud.decodedpng.js")) {}
                     view?.evaluateJavascript(getJsContent("/assets/megacloud.getsrcs.js")) {}

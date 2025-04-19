@@ -17,7 +17,7 @@ data class HiAnimePreferences(
 ) : ZoroPreferences {
 
     companion object : CustomPreferences<HiAnimePreferences> {
-        const val DEFAULT_BASE_URL = "https://hianime.to"
+        const val DEFAULT_BASE_URL = "https://hianimez.to"
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "hd-1" to "HD-1",
             "hd-2" to "HD-2",

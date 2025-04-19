@@ -1,6 +1,5 @@
 package com.sf.tadami.lib.megacloudextractor
 
-import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -159,7 +158,7 @@ class MegaCloudExtractor(
     }
 
     private fun getVideoDto(url: String): VideoDto {
-        val type = if (url.startsWith("https://megacloud.tv")) 0 else 1
+        val type = if (url.startsWith("https://megacloud.tv") or url.startsWith("https://megacloud.blog")) 0 else 1
 
         val keyType = SOURCES_KEY[type]
 
