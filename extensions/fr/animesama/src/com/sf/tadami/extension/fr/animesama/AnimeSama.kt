@@ -8,6 +8,7 @@ import com.sf.tadami.extension.fr.animesama.extractors.OneUploadExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
+import com.sf.tadami.lib.smoothpreextractor.SmoothPreExtractor
 import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
 import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
@@ -108,6 +109,18 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
                 if (!streamOrder.contains("oneupload")) {
                     streamOrder.add("oneupload")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                )
+            }
+
+            if (oldVersion < 15) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("smoothpre")) {
+                    streamOrder.add("smoothpre")
                 }
 
                 dataStore.editPreference(
@@ -472,6 +485,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     val streamUrl = episodeNumber?.let { urls[it - 1] } ?: return@parallelMap null
                     if (rawStreamSourceUrls.contains(streamUrl)) return@parallelMap null
                     rawStreamSourceUrls.add(streamUrl)
+
                     when {
                         streamUrl.contains("sendvid.com") -> {
                             SendvidExtractor(newClient, headers).videosFromUrl(streamUrl)
@@ -495,6 +509,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
                         streamUrl.contains("oneupload") -> {
                             OneUploadExtractor(newClient,headers).videosFromUrl(streamUrl)
+                        }
+
+                        streamUrl.contains("Smoothpre.com") -> {
+                            SmoothPreExtractor(newClient).videosFromUrl(streamUrl)
                         }
 
                         else -> null
