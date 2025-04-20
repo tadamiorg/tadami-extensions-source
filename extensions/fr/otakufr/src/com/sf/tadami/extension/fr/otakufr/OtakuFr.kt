@@ -100,6 +100,13 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
                     OtakuFrPreferences.PLAYER_STREAMS_ORDER
                 )
             }
+
+            if (oldVersion < 8) {
+                dataStore.editPreference(
+                    "https://otakufr.lol",
+                    stringPreferencesKey(OtakuFrPreferences.BASE_URL.name)
+                )
+            }
         }
         return true
     }
@@ -109,23 +116,16 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     }
 
     /* LATEST */
-    override fun latestSelector(): String = "article.episode"
+    override fun latestSelector(): String = "article.episodes"
 
     override fun latestAnimeNextPageSelector(): String =
-        "ul.pagination > li.page-item.active + li.page-item"
+        "div.pagination > span.current + a.inactive"
 
     override fun latestAnimeFromElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
-        anime.title = ""
-        anime.setUrlWithoutDomain(element.select("div.text-center > a.episode-link").attr("href"))
-        val imageTag = element.selectFirst("div.text-center > figure > a > img")
-        val imageSet = imageTag?.let {
-            it.attr("data-srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
-            it.attr("srcset").takeIf { srcset -> srcset.isNotEmpty() } ?:
-            it.attr("data-src").takeIf { src -> src.isNotEmpty() } ?:
-            it.attr("src").takeIf { src -> src.isNotEmpty() && src.contains("http") }
-        }
-        val image = imageSet?.split(",")?.last()?.trim()?.split(" ")?.firstOrNull()
+        anime.title = element.selectFirst("span.serie")?.ownText() ?: ""
+        anime.setUrlWithoutDomain(element.selectFirst("a")!!.attr("href"))
+        val image = element.selectFirst("div.poster > img")?.attr("src") ?: ""
         anime.thumbnailUrl = image
         return anime
     }
@@ -149,9 +149,8 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
                         .asCancelableObservable(listOf(500))
                         .map { response ->
                             val doc = response.asJsoup()
-                            val arianne = doc.select("ol.breadcrumb > li.breadcrumb-item:eq(1) a")
-                            anime.setUrlWithoutDomain(arianne.attr("href"))
-                            anime.title = arianne.text().trim()
+                            val actualUrl = doc.selectFirst("div.pag_episodes > div.item:nth-child(2) > a")!!.attr("href")
+                            anime.setUrlWithoutDomain(actualUrl)
                             anime
                         }
                 }.toList().toObservable()
@@ -163,7 +162,7 @@ class OtakuFr : ConfigurableParsedHttpAnimeSource<OtakuFrPreferences>(
     }
 
     override fun latestAnimesRequest(page: Int): Request {
-        return GET("${baseUrl}/page/$page/")
+        return GET("${baseUrl}/episodes/page/$page/")
     }
 
 

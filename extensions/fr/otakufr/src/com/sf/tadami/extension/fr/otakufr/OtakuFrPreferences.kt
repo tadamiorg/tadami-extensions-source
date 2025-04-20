@@ -14,7 +14,7 @@ data class OtakuFrPreferences(
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<OtakuFrPreferences> {
-        const val DEFAULT_BASE_URL = "https://otakufr.cc"
+        const val DEFAULT_BASE_URL = "https://otakufr.lol"
         val BASE_URL = stringPreferencesKey("base_url")
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "streamwish" to "StreamWish",
