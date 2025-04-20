@@ -1,11 +1,13 @@
 package com.sf.tadami.lib.okruextractor
 
+import com.sf.tadami.lib.playlistutils.PlaylistUtils
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
 import okhttp3.OkHttpClient
 
 class OkruExtractor(private val client: OkHttpClient) {
+    private val playlistUtils by lazy { PlaylistUtils(client) }
 
     private fun fixQuality(quality: String): String {
         val qualities = listOf(
@@ -23,29 +25,52 @@ class OkruExtractor(private val client: OkHttpClient) {
 
     fun videosFromUrl(url: String, prefix: String = "", fixQualities: Boolean = true): List<StreamSource> {
         val document = client.newCall(GET(url)).execute().asJsoup()
-        val videosString = document.selectFirst("div[data-options]")
+        val videoString = document.selectFirst("div[data-options]")
             ?.attr("data-options")
-            ?.substringAfter("\\\"videos\\\":[{\\\"name\\\":\\\"")
-            ?.substringBefore("]")
             ?: return emptyList()
-        return videosString.split("{\\\"name\\\":\\\"").reversed().mapNotNull {
-            val videoUrl = it.substringAfter("url\\\":\\\"")
-                .substringBefore("\\\"")
-                .replace("\\\\u0026", "&")
-            val quality = it.substringBefore("\\\"").let {qual ->
+
+        return when {
+            "ondemandHls" in videoString -> {
+                val playlistUrl = videoString.extractLink("ondemandHls")
+                playlistUtils.extractFromHls(playlistUrl, videoNameGen = { "Okru:$it".addPrefix(prefix) }).map {
+                    it.copy(server = "Okru")
+                }
+            }
+            "ondemandDash" in videoString -> {
+                val playlistUrl = videoString.extractLink("ondemandDash")
+                playlistUtils.extractFromDash(playlistUrl, videoNameGen = { it -> "Okru:$it".addPrefix(prefix) }).map {
+                    it.copy(server = "Okru")
+                }
+            }
+            else -> videosFromJson(videoString, prefix, fixQualities)
+        }
+    }
+
+    private fun String.addPrefix(prefix: String) =
+        prefix.takeIf(String::isNotBlank)
+            ?.let { "$prefix $this" }
+            ?: this
+
+    private fun String.extractLink(attr: String) =
+        substringAfter("$attr\\\":\\\"")
+            .substringBefore("\\\"")
+            .replace("\\\\u0026", "&")
+
+    private fun videosFromJson(videoString: String, prefix: String = "", fixQualities: Boolean = true): List<StreamSource> {
+        val arrayData = videoString.substringAfter("\\\"videos\\\":[{\\\"name\\\":\\\"")
+            .substringBefore("]")
+
+        return arrayData.split("{\\\"name\\\":\\\"").reversed().mapNotNull {
+            val videoUrl = it.extractLink("url")
+            val quality = it.substringBefore("\\\"").let {
                 if (fixQualities) {
-                    fixQuality(qual.lowercase().trim())
+                    fixQuality(it)
                 } else {
-                    qual
+                    it
                 }
             }
-            val videoQuality = ("Okru - $quality").let {videoQual ->
-                if (prefix.isNotBlank()) {
-                    "$prefix $videoQual"
-                } else {
-                    videoQual
-                }
-            }
+            val videoQuality = "Okru:$quality".addPrefix(prefix)
+
             if (videoUrl.startsWith("https://")) {
                 StreamSource(url = videoUrl, fullName = videoQuality, server = "Okru", quality = quality)
             } else {

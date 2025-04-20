@@ -25,5 +25,5 @@ val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()
 dependencies {
     compileOnly(project(":api"))
     compileOnly(libs.bundles.common)
-    implementation(project(":lib-playlist-utils"))
+    implementation(project(":lib:playlist-utils"))
 }
