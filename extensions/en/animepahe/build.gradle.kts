@@ -7,7 +7,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",2)
+        set("extVersionCode",3)
         set("extName","AnimePahe")
         set("pkgNameSuffix","en.animepahe")
         set("extClass",".AnimePahe")
