@@ -7,12 +7,14 @@ import com.sf.tadami.lib.megacloudextractor.MegaCloudExtractor
 import com.sf.tadami.lib.streamtapeextractor.StreamTapeExtractor
 import com.sf.tadami.multiexts.zoro.Zoro
 import com.sf.tadami.network.GET
+import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import kotlinx.coroutines.runBlocking
 import okhttp3.Request
+import org.jsoup.nodes.Element
 
 @Suppress("Unused")
 class HiAnime : Zoro<HiAnimePreferences>(
@@ -24,6 +26,8 @@ class HiAnime : Zoro<HiAnimePreferences>(
     override val lang: Lang = Lang.ENGLISH
 
     private val i18n = i18n(HiAnimeTranslations)
+
+    override val ajaxRoute = "/v2"
 
     init {
         val migrated = runBlocking {
@@ -56,14 +60,20 @@ class HiAnime : Zoro<HiAnimePreferences>(
         return true
     }
 
-    // =============================== Zoro extract streams ===============================
+    // =============================== Latest ===============================
 
-    override val ajaxRoute = "/v2"
+    override fun latestAnimesRequest(page: Int): Request = GET("$baseUrl/recently-updated?page=$page", docHeaders)
+
+    override fun latestAnimeFromElement(element: Element): SAnime {
+        return super.latestAnimeFromElement(element).apply {
+            url = url.substringBefore("?")
+        }
+    }
+
+    // =============================== Zoro extract streams ===============================
 
     private val streamtapeExtractor by lazy { StreamTapeExtractor(client) }
     private val megaCloudExtractor by lazy { MegaCloudExtractor(client, headers, dataStore) }
-
-    override fun latestAnimesRequest(page: Int): Request = GET("$baseUrl/recently-updated?page=$page", docHeaders)
 
     override fun extractVideo(server: VideoData): List<StreamSource> {
         return when (server.name) {
