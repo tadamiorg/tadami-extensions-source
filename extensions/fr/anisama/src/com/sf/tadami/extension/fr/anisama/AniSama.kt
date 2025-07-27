@@ -34,6 +34,7 @@ import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import uy.kohesive.injekt.injectLazy
 
+@Suppress("UNUSED")
 class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     sourceId = 6,
     prefGroup = AnisamaPreferences
@@ -57,12 +58,12 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
         val migrated = runBlocking {
             preferencesMigrations()
         }
-        if(migrated){
-            Log.i("AniSama","Successfully migrated preferences")
+        if (migrated) {
+            Log.i("AniSama", "Successfully migrated preferences")
         }
     }
 
-    private suspend fun preferencesMigrations() : Boolean {
+    private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -113,9 +114,10 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
         return getAnisamaPreferencesContent(i18n)
     }
 
-    // LATEST
+    // LATEST ANIMES
 
-    override fun latestAnimesRequest(page: Int): Request = GET("$baseUrl/recently-updated/?page=$page")
+    override fun latestAnimesRequest(page: Int): Request =
+        GET("$baseUrl/recently-updated/?page=$page")
 
     override fun latestSelector(): String = ".film_list-wrap article"
 
@@ -127,7 +129,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
         setUrlWithoutDomain(element.select(".film-poster-ahref").attr("href"))
     }
 
-    // SEARCH
+    // SEARCH ANIMES
 
     override fun getFilterList(): AnimeFilterList = AnimeFilterList()
 
@@ -151,7 +153,8 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
 
     // ANIME DETAILS
 
-    private fun Elements.getMeta(name: String) = select(".item:has(.item-title:contains($name)) > .item-content").text()
+    private fun Elements.getMeta(name: String) =
+        select(".item:has(.item-title:contains($name)) > .item-content").text()
 
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
@@ -169,12 +172,13 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
         return anime
     }
 
-    // EPISODES
-    override fun episodesSelector(): String = ".ep-item"
+    // EPISODES LIST
+
+    override fun episodesListSelector(): String = ".ep-item"
 
     private fun Anime.getId(): String = url.substringAfterLast("-")
 
-    override fun episodesRequest(anime: Anime): Request {
+    override fun episodesListRequest(anime: Anime): Request {
         return GET(
             "$baseUrl/ajax/episode/list/${anime.getId()}",
             headers.newBuilder().set("Referer", "$baseUrl${anime.url}").build(),
@@ -182,13 +186,13 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     }
 
     @Serializable
-    data class EpisodeListDTO(val html: String, val status : Boolean, val totalItems : Int)
+    data class EpisodeListDTO(val html: String, val status: Boolean, val totalItems: Int)
 
-    override fun episodesParse(response: Response): List<SEpisode> {
+    override fun episodesListParse(response: Response): List<SEpisode> {
         val jsonString = response.use { it.body.string() }
         val data = json.decodeFromString<EpisodeListDTO>(jsonString).html
         val document = Jsoup.parse(data)
-        return document.select(episodesSelector()).parallelMap(::episodeFromElement).reversed()
+        return document.select(episodesListSelector()).parallelMap(::episodeFromElement).reversed()
     }
 
     override fun episodeFromElement(element: Element): SEpisode {
@@ -205,11 +209,12 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
 
     // VIDEO STREAMS
 
-    override fun streamSourcesSelector(): String = ".server-item"
+    override fun episodeSourcesSelector(): String = ".server-item"
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> = throw Exception("Unused")
+    override fun episodeSourcesFromElement(element: Element): List<StreamSource> =
+        throw Exception("Unused")
 
-    override fun episodeRequest(url: String): Request {
+    override fun episodeSourcesRequest(url: String): Request {
         return GET(
             "$baseUrl/ajax/episode/servers?episodeId=${url.substringAfter("?ep=")}",
             headers.newBuilder().set("Referer", "$baseUrl/").build(),
@@ -217,15 +222,16 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     }
 
     @Serializable
-    data class EpisodeStreamsDTO(val html: String, val status : Boolean)
+    data class EpisodeStreamsDTO(val html: String, val status: Boolean)
+
     @Serializable
     data class StreamInfoDTO(val link: String)
 
     private val filemoonExtractor by lazy { FileMoonExtractor(client) }
     private val sibnetExtractor by lazy { SibnetExtractor(client) }
     private val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
-    private val voeExtractor by lazy { VoeExtractor(client,json) }
-    private val vidCdnExtractor by lazy { VidCdnExtractor(client,json) }
+    private val voeExtractor by lazy { VoeExtractor(client, json) }
+    private val vidCdnExtractor by lazy { VidCdnExtractor(client, json) }
     private val doodExtractor by lazy { DoodExtractor(client) }
     private val streamHideVidExtractor by lazy { StreamHideVidExtractor(client) }
 
@@ -235,12 +241,15 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
         val document = Jsoup.parse(data)
         val epid = response.request.url.toString().substringAfterLast("=")
         val streamSourcesList = mutableListOf<StreamSource>()
-        val deduplicatedData = document.select(streamSourcesSelector()).distinctBy { it.attr("data-id") }
+        val deduplicatedData =
+            document.select(episodeSourcesSelector()).distinctBy { it.attr("data-id") }
         streamSourcesList.addAll(
             deduplicatedData.parallelMap { server ->
                 runCatching {
-                    val playerRequest = GET("$baseUrl/ajax/episode/sources?id=${server.attr("data-id")}&epid=$epid")
-                    val playerResponse = client.newCall(playerRequest).execute().use { pRes -> pRes.body.string() }
+                    val playerRequest =
+                        GET("$baseUrl/ajax/episode/sources?id=${server.attr("data-id")}&epid=$epid")
+                    val playerResponse =
+                        client.newCall(playerRequest).execute().use { pRes -> pRes.body.string() }
                     val playerUrl = json.decodeFromString<StreamInfoDTO>(playerResponse).link
                     val prefix = server.attr("data-type").uppercase()
                     with(playerUrl) {
@@ -248,11 +257,20 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                             prefix == "VF" -> null
                             contains("toonanime.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl)
                             contains("vidcdn.xyz") -> vidCdnExtractor.videosFromUrl(playerUrl)
-                            contains("filemoon.sx") -> filemoonExtractor.videosFromUrl(this, "Filemoon - ",headers)
+                            contains("filemoon.sx") -> filemoonExtractor.videosFromUrl(
+                                this,
+                                "Filemoon - ",
+                                headers
+                            )
+
                             contains("sibnet.ru") -> sibnetExtractor.videosFromUrl(this)
                             contains("sendvid.com") -> sendvidExtractor.videosFromUrl(this)
                             contains("voe.sx") -> voeExtractor.videosFromUrl(this)
-                            contains(Regex("(d000d|dood)")) -> doodExtractor.videosFromUrl(this, "DoodStream")
+                            contains(Regex("(d000d|dood)")) -> doodExtractor.videosFromUrl(
+                                this,
+                                "DoodStream"
+                            )
+
                             contains("vidhide") -> streamHideVidExtractor.videosFromUrl(this)
                             else -> null
                         }
@@ -260,7 +278,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
                 }.getOrNull()
             }.filterNotNull().flatten(),
         )
-        return streamSourcesList.sort()
+        return streamSourcesList
     }
 
     override fun List<StreamSource>.sort(): List<StreamSource> {

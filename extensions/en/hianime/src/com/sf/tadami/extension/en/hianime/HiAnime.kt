@@ -87,5 +87,24 @@ class HiAnime : Zoro<HiAnimePreferences>(
         }
     }
 
-
+    override fun List<StreamSource>.sort(): List<StreamSource> {
+        return this.groupBy { it.server.lowercase() }.entries
+            .sortedWith(
+                compareBy { (server, _) ->
+                    preferences.playerStreamsOrder.split(",").indexOf(server)
+                }
+            ).flatMap { group ->
+                group.value.sortedWith(
+                    compareBy { source ->
+                        when {
+                            source.quality.isEmpty() -> Int.MAX_VALUE // Empty strings come last
+                            else -> {
+                                val matchResult = Regex("""(\d+)""").find(source.quality)
+                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
+                            }
+                        }
+                    }
+                ).reversed()
+            }
+    }
 }

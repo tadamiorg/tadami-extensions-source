@@ -36,6 +36,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.util.Locale
 
+@Suppress("UNUSED")
 class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     sourceId = 2,
     prefGroup = AnimeSamaPreferences
@@ -51,7 +52,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     private var episodeNumber: Int? = null
 
-    private val VOICES_VALUES = listOf("vostfr","vf","vj")
+    private val VOICES_VALUES = listOf("vostfr", "vf", "vj", "va")
 
     private val i18n = i18n(AnimeSamaTranslations)
 
@@ -59,14 +60,15 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         val migrated = runBlocking {
             preferencesMigrations()
         }
-        if(migrated){
-            Log.i("AnimeSama","Successfully migrated preferences")
+        if (migrated) {
+            Log.i("AnimeSama", "Successfully migrated preferences")
         }
     }
 
 
     // ============================== Preferences ===============================
-    private suspend fun preferencesMigrations() : Boolean{
+
+    private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -95,7 +97,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 if (!streamOrder.contains("vidmoly")) {
                     streamOrder.add("vidmoly")
                 }
-                if(streamOrder.contains("animesama")){
+                if (streamOrder.contains("animesama")) {
                     streamOrder.remove("animesama")
                 }
 
@@ -137,7 +139,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
 
-    // ============================== Latest ===============================
+    // ============================== Latest Animes ===============================
+
     override fun latestSelector(): String = "#containerAjoutsAnimes div a:first-of-type"
 
     override fun latestAnimeNextPageSelector(): String = throw Exception("Not used")
@@ -155,7 +158,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     override fun latestAnimeFromElement(element: Element): SAnime {
         val titleText = element.selectFirst("h1")?.text() ?: ""
         val lang = element.selectFirst("h1 + hr + div button:first-of-type")?.text()?.trim() ?: ""
-        val titleLang = if(lang.lowercase() == "vostfr") "" else "${lang.uppercase(Locale.getDefault())} "
+        val titleLang =
+            if (lang.lowercase() == "vostfr") "" else "${lang.uppercase(Locale.getDefault())} "
         val title = "$titleLang$titleText"
         val anime: SAnime = SAnime.create()
         anime.title = title
@@ -164,10 +168,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return anime
     }
 
-    override fun latestAnimesRequest(page: Int): Request = GET(baseUrl,headers)
+    override fun latestAnimesRequest(page: Int): Request = GET(baseUrl, headers)
 
 
-    // ============================== Search ===============================
+    // ============================== Search Animes ===============================
+
     override fun searchSelector(): String =
         "#list_catalog > div"
 
@@ -203,16 +208,22 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                             val scripts =
                                 doc.select("h2 + p + div > script, h2 + div > script").toString()
 
-                            val seasons = seasonRegex.findAll(scripts).fold(mutableListOf<Pair<String,String>>()) { acc, match ->
-                                val (seasonName, seasonUrl) = match.destructured
+                            val seasons = seasonRegex.findAll(scripts)
+                                .fold(mutableListOf<Pair<String, String>>()) { acc, match ->
+                                    val (seasonName, seasonUrl) = match.destructured
 
-                                VOICES_VALUES.parallelMap { voice ->
-                                    getLangUrl(anime = anime, seasonName = seasonName, seasonUrl = seasonUrl, lang = voice)?.let {
-                                        acc.add(it)
+                                    VOICES_VALUES.parallelMap { voice ->
+                                        getLangUrl(
+                                            anime = anime,
+                                            seasonName = seasonName,
+                                            seasonUrl = seasonUrl,
+                                            lang = voice
+                                        )?.let {
+                                            acc.add(it)
+                                        }
                                     }
+                                    acc
                                 }
-                                acc
-                            }
 
 
                             seasons.map { (seasonName, seasonUrl) ->
@@ -242,9 +253,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         try {
             val isVo = lang === "vostfr"
             val langUrlStem = "${seasonUrl.substringBeforeLast("/")}/$lang"
-            val langRes = client.newCall(HEAD("$baseUrl${anime.url}/$langUrlStem", headers)).execute()
+            val langRes =
+                client.newCall(HEAD("$baseUrl${anime.url}/$langUrlStem", headers)).execute()
             if (langRes.isSuccessful) {
-                val titleLang = if(isVo) "" else "${lang.uppercase(Locale.getDefault())} "
+                val titleLang = if (isVo) "" else "${lang.uppercase(Locale.getDefault())} "
                 return "$titleLang$seasonName" to langUrlStem
             }
             return null
@@ -285,6 +297,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
 
     // ============================== Anime Details ===============================
+
     override fun animeDetailsRequest(anime: Anime): Request {
         return GET(baseUrl + anime.url + "/../..", headers)
     }
@@ -314,7 +327,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         if (foundSeason != null) {
             val (name, _) = foundSeason.destructured
             val lang = dbAnime.url.removeSuffix("/").substringAfterLast("/").uppercase()
-            val langTitle = if(lang == "VOSTFR") "" else "$lang "
+            val langTitle = if (lang == "VOSTFR") "" else "$lang "
             seasonName = "$langTitle$name - $animeTitle"
         }
 
@@ -331,7 +344,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
 
     // ============================== Anime Episodes ===============================
-    override fun episodesSelector(): String = throw Exception("Not used")
+    override fun episodesListSelector(): String = throw Exception("Not used")
 
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
 
@@ -406,7 +419,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
     override fun fetchEpisodesList(anime: Anime): Observable<List<SEpisode>> {
-        return client.newCall(episodesRequest(anime))
+        return client.newCall(episodesListRequest(anime))
             .asCancelableObservable()
             .flatMap { response ->
                 val document = response.asJsoup()
@@ -458,7 +471,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             }
     }
 
-    // ============================== Episode stream sources ===============================
+    // ============================== Episode Sources ===============================
+
     override fun episodeSourcesParse(response: Response): List<StreamSource> =
         throw Exception("Unused")
 
@@ -504,11 +518,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("vidmoly") -> {
-                            VidmolyExtractor(newClient,headers).videosFromUrl(streamUrl)
+                            VidmolyExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
 
                         streamUrl.contains("oneupload") -> {
-                            OneUploadExtractor(newClient,headers).videosFromUrl(streamUrl)
+                            OneUploadExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
 
                         streamUrl.contains("Smoothpre.com") -> {
@@ -521,23 +535,23 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             }.filterNotNull().flatten(),
         )
 
-        return streamSourcesList.sort()
+        return streamSourcesList
     }
 
-    override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
-        return client.newCall(episodeRequest(url))
+    override fun fetchEpisodeSources(url: String): Observable<List<StreamSource>> {
+        return client.newCall(episodeSourcesRequest(url))
             .asCancelableObservable()
             .map {
                 episodeSourcesParse(it, url)
             }
     }
 
-    override fun streamSourcesSelector(): String = throw Exception("Not used")
+    override fun episodeSourcesSelector(): String = throw Exception("Not used")
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> =
+    override fun episodeSourcesFromElement(element: Element): List<StreamSource> =
         throw Exception("Not used")
 
-    override fun episodeRequest(url: String): Request {
+    override fun episodeSourcesRequest(url: String): Request {
         episodeNumber = url.substringAfter("?number=").toInt()
         return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", headers)
     }

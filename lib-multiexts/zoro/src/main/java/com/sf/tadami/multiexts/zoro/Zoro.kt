@@ -147,18 +147,18 @@ abstract class Zoro<T : ZoroPreferences>(
 
     // ============================== Episodes ==============================
 
-    override fun episodesRequest(anime: Anime): Request {
+    override fun episodesListRequest(anime: Anime): Request {
         val id = anime.url.substringAfterLast("-")
         return GET("$baseUrl/ajax$ajaxRoute/episode/list/$id", apiHeaders(baseUrl + anime.url))
     }
 
-    override fun episodesSelector() = "a.ep-item"
+    override fun episodesListSelector() = "a.ep-item"
 
-    override fun episodesParse(response: Response): List<SEpisode> {
+    override fun episodesListParse(response: Response): List<SEpisode> {
         val jsonString = response.use { it.body.string() }
         val document = json.decodeFromString<HtmlResponse>(jsonString).getHtml()
 
-        return document.select(episodesSelector())
+        return document.select(episodesListSelector())
             .map(::episodeFromElement)
             .reversed()
     }
@@ -175,7 +175,7 @@ abstract class Zoro<T : ZoroPreferences>(
     // ============================ Video Links =============================
 
 
-    override fun episodeRequest(url: String): Request {
+    override fun episodeSourcesRequest(url: String): Request {
         val id = url.substringAfterLast("?ep=")
         return GET(
             "$baseUrl/ajax$ajaxRoute/episode/servers?episodeId=$id",
@@ -225,8 +225,8 @@ abstract class Zoro<T : ZoroPreferences>(
         return embedLinks
     }
 
-    override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
-        return client.newCall(episodeRequest(url))
+    override fun fetchEpisodeSources(url: String): Observable<List<StreamSource>> {
+        return client.newCall(episodeSourcesRequest(url))
             .asCancelableObservable()
             .map { response ->
                 customEpisodeSourcesParse(response).parallelMap { server ->
@@ -239,9 +239,9 @@ abstract class Zoro<T : ZoroPreferences>(
 
     abstract fun extractVideo(server: VideoData): List<StreamSource>
 
-    override fun streamSourcesSelector() = throw UnsupportedOperationException()
+    override fun episodeSourcesSelector() = throw UnsupportedOperationException()
 
-    override fun streamSourcesFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun episodeSourcesFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun episodeSourcesParse(response: Response) = throw UnsupportedOperationException()
 

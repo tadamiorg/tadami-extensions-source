@@ -1,6 +1,5 @@
 package com.sf.tadami.lib.sendvidextractor
 
-import android.util.Log
 import com.sf.tadami.lib.playlistutils.PlaylistUtils
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup

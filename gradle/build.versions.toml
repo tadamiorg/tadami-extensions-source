@@ -2,4 +2,4 @@
 compileSdk = "35"
 minSdk = "28"
 targetSdk = "35"
-latestApiVersion = "1.2"
+latestApiVersion = "1.3"

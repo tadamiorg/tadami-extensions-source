@@ -1,6 +1,5 @@
 package com.sf.tadami.extension.en.hianime
 
-import androidx.compose.ui.res.stringResource
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.preferences.model.SourcePreference
 import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent

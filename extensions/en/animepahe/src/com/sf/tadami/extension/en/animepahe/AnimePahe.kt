@@ -181,18 +181,18 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         }
     }
 
-    // ============================== Episodes ==============================
+    // ============================== Episodes List ==============================
 
-    override fun episodesSelector(): String = throw Exception("Not used !")
+    override fun episodesListSelector(): String = throw Exception("Not used !")
 
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used !")
 
-    override fun episodesRequest(anime: Anime): Request {
+    override fun episodesListRequest(anime: Anime): Request {
         val session = fetchSession(anime.getId())
         return GET("$baseUrl/api?m=release&id=$session&sort=episode_desc&page=1")
     }
 
-    override fun episodesParse(response: Response): List<SEpisode> {
+    override fun episodesListParse(response: Response): List<SEpisode> {
         val url = response.request.url.toString()
         val session = url.substringAfter("&id=").substringBefore("&")
         return recursivePages(response, session)
@@ -240,10 +240,10 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
 
     // ============================ Video Links =============================
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> =
+    override fun episodeSourcesFromElement(element: Element): List<StreamSource> =
         throw Exception("not used")
 
-    override fun streamSourcesSelector(): String = throw Exception("not used")
+    override fun episodeSourcesSelector(): String = throw Exception("not used")
 
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val document = response.asJsoup()
@@ -253,7 +253,7 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
             val quality = btn.text()
             val paheWinLink = downloadLinks[index].attr("href")
             getVideo(paheWinLink, kwikLink, quality)
-        }.sort()
+        }
     }
 
     private fun getVideo(paheUrl: String, kwikUrl: String, quality: String): StreamSource {
