@@ -41,7 +41,7 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
 
     override val lang: Lang = Lang.ENGLISH
 
-    private val ajaxBaseUrl: String = "https://ajax.gogocdn.net/ajax"
+    private val ajaxBaseUrl: String = "ajax"
 
     override val client: OkHttpClient = network.cloudflareClient
 
@@ -51,8 +51,8 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
         val migrated = runBlocking {
             preferencesMigrations()
         }
-        if(migrated){
-            Log.i("GogoAnime","Successfully migrated preferences")
+        if (migrated) {
+            Log.i("GogoAnime", "Successfully migrated preferences")
         }
     }
 
@@ -60,7 +60,7 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
         return getGogoAnimePreferencesContent(i18n)
     }
 
-    private suspend fun preferencesMigrations() : Boolean {
+    private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -76,6 +76,13 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
             if (oldVersion < 6) {
                 dataStore.editPreference(
                     "https://anitaku.pe",
+                    stringPreferencesKey(GogoAnimePreferences.BASE_URL.name)
+                )
+            }
+
+            if (oldVersion < 7) {
+                dataStore.editPreference(
+                    "https://ww12.gogoanimes.org",
                     stringPreferencesKey(GogoAnimePreferences.BASE_URL.name)
                 )
             }
@@ -96,18 +103,14 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
         val anime: SAnime = SAnime.create()
         val imgRef = element.select("div.img a").first()
         anime.title = element.select("p.name").first()!!.text()
-        anime.url = getDetailsURL(imgRef?.select("img")?.first()?.attr("src"))
-        anime.thumbnailUrl = imgRef!!.select("img").first()?.attr("src")
+        anime.setUrlWithoutDomain(imgRef?.attr("href") ?: "")
+        anime.thumbnailUrl = baseUrl + imgRef?.select("img")?.first()?.attr("src")
+        Log.e("Gogo", anime.toString())
         return anime
     }
 
-    private fun getDetailsURL(episodeURL: String?): String {
-        return "/category/" + episodeURL?.split("/")?.last()
-            ?.replace(Regex("(-[0-9]{5,}\\..*\$)|(\\..*\$)"), "")
-    }
-
     override fun latestAnimesRequest(page: Int): Request {
-        return GET("${ajaxBaseUrl}/page-recent-release.html?page=$page&type=1", headers)
+        return GET("${baseUrl}/${ajaxBaseUrl}/page-recent-release?page=$page", headers)
     }
 
     // Search
@@ -152,7 +155,8 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
         val anime = SAnime.create()
 
         anime.title = document.selectFirst("div.anime_info_body_bg > h1")!!.text()
-        anime.genres = document.getInfo("Genre:")?.select("a")?.map { it.attr("title") } ?: emptyList()
+        anime.genres =
+            document.getInfo("Genre:")?.select("a")?.map { it.attr("title") } ?: emptyList()
         anime.description = document.select("div.description").text()
         anime.status = document.getInfo("Status:")?.select("a")?.text()
         anime.release = document.getInfo("Released:")?.ownText()
@@ -166,41 +170,27 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
 
     // Episodes List
 
-    override fun episodesSelector(): String = "li > a"
+    override fun episodesListSelector(): String = "#episode_related > li > a"
+
+    override fun episodesListParse(response: Response): List<SEpisode> {
+        val document = response.asJsoup()
+        return document.select(episodesListSelector()).filter { epDiv ->
+            val children = epDiv.children()
+            val lastChild = children.lastOrNull()
+
+            lastChild?.tagName() == "div" &&
+                    lastChild.hasClass("cate") &&
+                    lastChild.text().trim() == "SUB"
+        }.map { episodeFromElement(it) }.reversed()
+    }
 
     override fun episodeFromElement(element: Element): SEpisode {
         val episode = SEpisode.create()
         val ep = element.selectFirst("div.name")?.ownText()?.substringAfter(" ") ?: ""
-        episode.setUrlWithoutDomain(baseUrl + element.attr("href").substringAfter(" "))
+        episode.setUrlWithoutDomain(element.attr("href").substringAfter(" "))
         episode.name = "Episode $ep"
         episode.episodeNumber = ep.toFloat()
         return episode
-    }
-
-    private fun getGogoEpisodesRequest(response: Response): Request {
-        val document = response.asJsoup()
-
-        val lastEp = document.select("ul#episode_page li a").last()?.attr("ep_end")
-        val animeId = document.select("input#movie_id").attr("value")
-
-        return GET(
-            "$ajaxBaseUrl/load-list-episode?ep_start=0&ep_end=$lastEp&id=$animeId",
-            headers
-        )
-    }
-
-    override fun fetchEpisodesList(anime: Anime): Observable<List<SEpisode>> {
-        val episodesListRequest = client.newCall(episodesRequest(anime))
-            .asObservable()
-            .map { response ->
-                getGogoEpisodesRequest(response)
-            }
-        return episodesListRequest.flatMap { request ->
-            client.newCall(request)
-                .asCancelableObservable().map { response ->
-                    episodesParse(response)
-                }
-        }
     }
 
     // Episode Source Stream
@@ -226,10 +216,10 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
             }
     }
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> =
+    override fun episodeSourcesFromElement(element: Element): List<StreamSource> =
         throw Exception("not used")
 
-    override fun streamSourcesSelector(): String = throw Exception("not used")
+    override fun episodeSourcesSelector(): String = throw Exception("not used")
 
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val document = response.asJsoup()
@@ -265,7 +255,7 @@ class GogoAnime : ConfigurableParsedHttpAnimeSource<GogoAnimePreferences>(
                             streamwishExtractor.videosFromUrl(
                                 serverUrl,
                                 videoNameGen = { quality -> "FileLions - $quality" }).map {
-                                    it.copy(server="FileLions")
+                                it.copy(server = "FileLions")
                             }
                         }
 
