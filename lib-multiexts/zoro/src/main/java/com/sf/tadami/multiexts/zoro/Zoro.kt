@@ -39,10 +39,7 @@ abstract class Zoro<T : ZoroPreferences>(
     private val json: Json by injectLazy()
 
     protected val docHeaders = headers.newBuilder().apply {
-        add(
-            "Accept",
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-        )
+        add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
         add("Host", baseUrl.toHttpUrl().host)
         add("Referer", "$baseUrl/")
     }.build()

@@ -19,14 +19,19 @@ class FileMoonExtractor(private val client: OkHttpClient) {
     private val json: Json by injectLazy()
 
     fun videosFromUrl(url: String, prefix: String = "Filemoon - ", headers: Headers? = null): List<StreamSource> {
-        val httpUrl = url.toHttpUrl()
+        var httpUrl = url.toHttpUrl()
         val videoHeaders = (headers?.newBuilder() ?: Headers.Builder())
             .set("Referer", url)
             .set("Origin", "https://${httpUrl.host}")
             .build()
 
         val doc = client.newCall(GET(url, videoHeaders)).execute().asJsoup()
-        val jsEval = doc.selectFirst("script:containsData(eval):containsData(m3u8)")!!.data()
+        val jsEval = doc.selectFirst("script:containsData(eval):containsData(m3u8)")?.data() ?: run {
+            val iframeUrl = doc.selectFirst("iframe[src]")!!.attr("src")
+            httpUrl = iframeUrl.toHttpUrl()
+            val iframeDoc = client.newCall(GET(iframeUrl, videoHeaders)).execute().asJsoup()
+            iframeDoc.selectFirst("script:containsData(eval):containsData(m3u8)")!!.data()
+        }
         val unpacked = JsUnpacker.unpackAndCombine(jsEval).orEmpty()
         val masterUrl = unpacked.takeIf(String::isNotBlank)
             ?.substringAfter("{file:\"", "")

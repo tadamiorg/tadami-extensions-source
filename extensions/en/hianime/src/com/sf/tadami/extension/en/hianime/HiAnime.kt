@@ -82,7 +82,7 @@ class HiAnime : Zoro<HiAnimePreferences>(
                     ?.let(::listOf)
                     ?: emptyList()
             }
-            "HD-1", "HD-2" -> megaCloudExtractor.getVideosFromUrl(server.link, server.type, server.name)
+            "HD-1", "HD-2", "HD-3" -> megaCloudExtractor.getVideosFromUrl(server.link, server.type, server.name)
             else -> emptyList()
         }
     }
