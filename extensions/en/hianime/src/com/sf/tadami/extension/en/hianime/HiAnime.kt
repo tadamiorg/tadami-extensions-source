@@ -73,7 +73,7 @@ class HiAnime : Zoro<HiAnimePreferences>(
     // =============================== Zoro extract streams ===============================
 
     private val streamtapeExtractor by lazy { StreamTapeExtractor(client) }
-    private val megaCloudExtractor by lazy { MegaCloudExtractor(client, headers, dataStore) }
+    private val megaCloudExtractor by lazy { MegaCloudExtractor(client, headers, MEGACLOUD_API) }
 
     override fun extractVideo(server: VideoData): List<StreamSource> {
         return when (server.name) {
@@ -106,5 +106,9 @@ class HiAnime : Zoro<HiAnimePreferences>(
                     }
                 ).reversed()
             }
+    }
+
+    companion object {
+        const val MEGACLOUD_API = "https://script.google.com/macros/s/AKfycbxHbYHbrGMXYD2-bC-C43D3njIbU-wGiYQuJL61H4vyy6YVXkybMNNEPJNPPuZrD1gRVA/exec"
     }
 }
