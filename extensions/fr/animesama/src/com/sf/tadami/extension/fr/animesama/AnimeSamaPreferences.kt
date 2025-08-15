@@ -19,13 +19,12 @@ data class AnimeSamaPreferences(
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "sibnet" to "Sibnet",
             "vidmoly" to "VidMoly",
+            "vidhide" to "VidHide",
             "smoothpre" to "SmoothPre",
             "sendvid" to "Sendvid",
             "vk" to "Vk",
             "oneupload" to "OneUpload",
             "yourupload" to "YourUpload",
-
-
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE = intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))
