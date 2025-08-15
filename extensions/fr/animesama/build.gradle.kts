@@ -6,7 +6,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",16)
+        set("extVersionCode",17)
         set("extName","AnimeSama")
         set("pkgNameSuffix","fr.animesama")
         set("extClass",".AnimeSama")
@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":lib:yourupload-extractor"))
     implementation(project(":lib:vidmoly-extractor"))
     implementation(project(":lib:smoothpre-extractor"))
+    implementation(project(":lib:vidhide-extractor"))
     implementation(project(":lib:i18n"))
 }
 

@@ -95,7 +95,7 @@ class PlaylistUtils(
             return listOf(
                 StreamSource(
                     url = playlistUrl,
-                    fullName = videoNameGen(""),
+                    fullName = videoNameGen("Video"),
                     headers = masterHeaders,
                     subtitleTracks = subtitleList,
                     audioTracks = audioList,
@@ -136,7 +136,14 @@ class PlaylistUtils(
                 val resolution = it.substringAfter("RESOLUTION=")
                     .substringBefore("\n")
                     .substringAfter("x")
-                    .substringBefore(",") + "p"
+                    .substringBefore(",")
+                    .takeIf { r -> r.isNotEmpty() }
+                    ?.let{ r ->
+                        r + "p"
+                    } ?: "Video"
+
+
+
 
                 val videoUrl = it.substringAfter("\n").substringBefore("\n").let { url ->
                     getAbsoluteUrl(url, playlistUrl, masterUrlBasePath)?.trimEnd()

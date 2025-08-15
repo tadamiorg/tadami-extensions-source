@@ -9,6 +9,7 @@ import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.smoothpreextractor.SmoothPreExtractor
+import com.sf.tadami.lib.vidhide.VidHideExtractor
 import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
 import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
@@ -123,6 +124,18 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
                 if (!streamOrder.contains("smoothpre")) {
                     streamOrder.add("smoothpre")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                )
+            }
+
+            if (oldVersion < 17) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+                if (!streamOrder.contains("vidhide")) {
+                    streamOrder.add("vidhide")
                 }
 
                 dataStore.editPreference(
@@ -518,7 +531,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("vidmoly") -> {
-                            VidmolyExtractor(newClient, headers).videosFromUrl(streamUrl)
+                            VidmolyExtractor(newClient, headers).videosFromUrl(streamUrl.replace("vidmoly.to","vidmoly.net"))
                         }
 
                         streamUrl.contains("oneupload") -> {
@@ -527,6 +540,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
                         streamUrl.contains("Smoothpre.com") -> {
                             SmoothPreExtractor(newClient).videosFromUrl(streamUrl)
+                        }
+
+                        streamUrl.contains("movearnpre") -> {
+                            VidHideExtractor(newClient, "https://HI3THh5OxxWw.ovaltinecdn.com").videosFromUrl(streamUrl)
                         }
 
                         else -> null
@@ -542,7 +559,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return client.newCall(episodeSourcesRequest(url))
             .asCancelableObservable()
             .map {
-                episodeSourcesParse(it, url)
+                episodeSourcesParse(it, url).sort()
             }
     }
 

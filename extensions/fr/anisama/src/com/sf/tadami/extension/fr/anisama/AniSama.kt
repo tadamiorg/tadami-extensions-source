@@ -233,7 +233,7 @@ class AniSama : ConfigurableParsedHttpAnimeSource<AnisamaPreferences>(
     private val voeExtractor by lazy { VoeExtractor(client, json) }
     private val vidCdnExtractor by lazy { VidCdnExtractor(client, json) }
     private val doodExtractor by lazy { DoodExtractor(client) }
-    private val streamHideVidExtractor by lazy { StreamHideVidExtractor(client) }
+    private val streamHideVidExtractor by lazy { StreamHideVidExtractor(client,headers) }
 
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val jsonString = response.use { it.body.string() }

@@ -248,18 +248,18 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         return anime
     }
 
-    override fun episodesParse(response: Response): List<SEpisode> {
+    override fun episodesListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
-        return document.select(episodesSelector())
+        return document.select(episodesListSelector())
             .mapIndexed { index, element -> episodeFromElementCustom(element, index + 1) }
     }
 
-    override fun streamSourcesSelector(): String = throw Exception("Unused")
+    override fun episodeSourcesSelector(): String = throw Exception("Unused")
 
-    override fun streamSourcesFromElement(element: Element): List<StreamSource> =
+    override fun episodeSourcesFromElement(element: Element): List<StreamSource> =
         throw Exception("Unused")
 
-    override fun episodesSelector(): String = "li.wp-manga-chapter"
+    override fun episodesListSelector(): String = "li.wp-manga-chapter"
 
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("Unused")
 
@@ -276,7 +276,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         return episode
     }
 
-    override fun fetchEpisode(url: String): Observable<List<StreamSource>> {
+    override fun fetchEpisodeSources(url: String): Observable<List<StreamSource>> {
         val callMap = mutableMapOf<String, Pair<Call, CountDownLatch>>()
         return client.newCall(GET(baseUrl + url, headers)).asCancelableObservable().map { res ->
             val document = res.asJsoup()
