@@ -519,7 +519,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         streamUrl.contains("sibnet.ru") -> {
-                            SibnetExtractor(newClient,headers).videosFromUrl(streamUrl)
+                            SibnetExtractor(newClient).videosFromUrl(streamUrl)
                         }
 
                         streamUrl.contains("vkvideo.ru") -> {
