@@ -9,8 +9,6 @@ import com.sf.tadami.ui.utils.detectSubtitleFormat
 import com.sf.tadami.ui.utils.parallelMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -36,29 +34,30 @@ class MegaCloudExtractor(
     }
 
     fun getVideosFromUrl(url: String, type: String, name: String): List<StreamSource> {
-        val video = getVideoDto(url)
+        val videos = getVideoDto(url)
 
-        val masterUrl = video.m3u8
-        val subs2 = video.tracks
-            ?.filter { it.kind == "captions" }
-            ?.parallelMap {
-                val mimetype = detectSubtitleFormat(it.file)
-                Track.SubtitleTrack(url = it.file, lang = it.label, mimeType = mimetype)
+        return videos.flatMap { video ->
+            val masterUrl = video.m3u8
+            val subs2 = video.tracks
+                ?.filter { it.kind == "captions" }
+                ?.parallelMap {
+                    val mimetype = detectSubtitleFormat(it.file)
+                    Track.SubtitleTrack(url = it.file, lang = it.label, mimeType = mimetype)
+                }
+                .orEmpty()
+                .let { playlistUtils.fixSubtitles(it) }
+            playlistUtils.extractFromHls(
+                masterUrl,
+                videoNameGen = { "$name - $it - $type" },
+                subtitleList = subs2,
+                referer = "https://${url.toHttpUrl().host}/",
+            ).map {
+                it.copy(server = "MegaCloud")
             }
-            .orEmpty()
-            .let { playlistUtils.fixSubtitles(it) }
-
-        return playlistUtils.extractFromHls(
-            playlistUrl = masterUrl,
-            videoNameGen = { "$name - $type - $it" },
-            referer = "https://${url.toHttpUrl().host}/",
-            subtitleList = subs2
-        ).map {
-            it.copy(server = "MegaCloud")
         }
     }
 
-    private fun getVideoDto(url: String): VideoDto {
+    private fun getVideoDto(url: String): List<VideoDto> {
         val id = url.substringAfter(SOURCES_SPLITTER, "")
             .substringBefore("?", "")
             .ifEmpty { throw Exception("Failed to extract ID from URL") }
@@ -78,38 +77,49 @@ class MegaCloudExtractor(
         val responseNonce = client.newCall(GET(url, megaCloudHeaders))
             .execute().use { it.body.string() }
         val match1 = Regex("""\b[a-zA-Z0-9]{48}\b""").find(responseNonce)
-        val match2 = Regex("""\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b""").find(responseNonce)
+        val match2 =
+            Regex("""\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b""").find(
+                responseNonce
+            )
 
         val nonce = match1?.value ?: match2?.let {
             it.groupValues[1] + it.groupValues[2] + it.groupValues[3]
         } ?: throw IllegalStateException("Failed to extract nonce from response")
 
-        val srcRes = client.newCall(GET("${megaCloudServerUrl}${SOURCES_URL}${id}&_k=${nonce}", megaCloudHeaders))
+        val srcRes = client.newCall(
+            GET(
+                "${megaCloudServerUrl}${SOURCES_URL}${id}&_k=${nonce}",
+                megaCloudHeaders
+            )
+        )
             .execute().use { it.body.string() }
-
         val data = json.decodeFromString<SourceResponseDto>(srcRes)
-        val encoded = data.sources.jsonPrimitive.content
-        val key = requestNewKey()
 
-        val m3u8: String = if (".m3u8" in encoded) {
-            encoded
-        } else {
-            val fullUrl = buildString {
-                append(megaCloudAPI)
-                append("?encrypted_data=").append(URLEncoder.encode(encoded, "UTF-8"))
-                append("&nonce=").append(URLEncoder.encode(nonce, "UTF-8"))
-                append("&secret=").append(URLEncoder.encode(key, "UTF-8"))
+        val key by lazy { requestNewKey() }
+
+        return data.sources.map { source ->
+            val encoded = source.file
+
+            val m3u8: String = if (!data.encrypted || ".m3u8" in encoded) {
+                encoded
+            } else {
+                val fullUrl = buildString {
+                    append(megaCloudAPI)
+                    append("?encrypted_data=").append(URLEncoder.encode(encoded, "UTF-8"))
+                    append("&nonce=").append(URLEncoder.encode(nonce, "UTF-8"))
+                    append("&secret=").append(URLEncoder.encode(key, "UTF-8"))
+                }
+
+                val decryptedResponse = client.newCall(GET(fullUrl))
+                    .execute().use { it.body.string() }
+                Regex("\"file\":\"(.*?)\"")
+                    .find(decryptedResponse)
+                    ?.groupValues?.get(1)
+                    ?: throw Exception("Video URL not found in decrypted response")
             }
 
-            val decryptedResponse = client.newCall(GET(fullUrl))
-                .execute().use { it.body.string() }
-            Regex("\"file\":\"(.*?)\"")
-                .find(decryptedResponse)
-                ?.groupValues?.get(1)
-                ?: throw Exception("Video URL not found in decrypted response")
+            VideoDto(m3u8, data.tracks)
         }
-
-        return VideoDto(m3u8, data.tracks)
     }
 
     private fun requestNewKey(): String =
@@ -133,9 +143,15 @@ class MegaCloudExtractor(
 
     @Serializable
     data class SourceResponseDto(
-        val sources: JsonElement,
+        val sources: List<SourceDto>,
         val encrypted: Boolean = true,
         val tracks: List<TrackDto>? = null,
+    )
+
+    @Serializable
+    data class SourceDto(
+        val file: String,
+        val type: String,   // 'hls'
     )
 
     @Serializable
