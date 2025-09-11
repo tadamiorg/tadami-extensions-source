@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.extension.fr.jetanime.extractors.MilvayoExtractor
 import com.sf.tadami.lib.filemoonextractor.FileMoonExtractor
 import com.sf.tadami.lib.i18n.i18n
-import com.sf.tadami.lib.streamhidevid.StreamHideVidExtractor
 import com.sf.tadami.multiexts.dooplay.DooPlay
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup

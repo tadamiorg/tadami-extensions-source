@@ -11,7 +11,7 @@ import okhttp3.OkHttpClient
 class SendvidExtractor(private val client: OkHttpClient, private val headers: Headers) {
     private val playlistUtils by lazy { PlaylistUtils(client, headers) }
 
-    fun videosFromUrl(url: String, prefix: String = ""): List<StreamSource> {
+    fun videosFromUrl(url: String, prefix: String = "", suffix: String = ""): List<StreamSource> {
         val document = client.newCall(GET(url, headers)).execute().asJsoup()
         val masterUrl = document.selectFirst("source#video_source")?.attr("src") ?: return emptyList()
         when{
@@ -29,7 +29,7 @@ class SendvidExtractor(private val client: OkHttpClient, private val headers: He
                     .set("Origin", httpUrl)
                     .set("Referer", "$httpUrl/")
                     .build()
-                return listOf(StreamSource(url = masterUrl, fullName = "$prefix Sendvid", server = "Sendvid", headers = newHeaders))
+                return listOf(StreamSource(url = masterUrl, fullName = "$prefix Sendvid $suffix", server = "Sendvid", headers = newHeaders))
             }
         }
     }

@@ -9,12 +9,13 @@ import okhttp3.OkHttpClient
 
 class SibnetExtractor(private val client: OkHttpClient) {
 
-    fun videosFromUrl(url: String, prefix: String = ""): List<StreamSource> {
+    fun videosFromUrl(url: String, prefix: String = "", suffix: String = ""): List<StreamSource> {
         val videoList = mutableListOf<StreamSource>()
 
         val document = client.newCall(
             GET(url),
         ).execute().asJsoup()
+
         val script = document.selectFirst("script:containsData(player.src)")?.data() ?: return emptyList()
         val slug = script.substringAfter("player.src").substringAfter("src:")
             .substringAfter("\"").substringBefore("\"")
@@ -31,7 +32,7 @@ class SibnetExtractor(private val client: OkHttpClient) {
         )
 
         videoList.add(
-            StreamSource(url = videoUrl, fullName = "$prefix Sibnet", server = "Sibnet", headers = videoHeaders),
+            StreamSource(url = videoUrl, fullName = "$prefix Sibnet $suffix", server = "Sibnet", headers = videoHeaders),
         )
 
         return videoList

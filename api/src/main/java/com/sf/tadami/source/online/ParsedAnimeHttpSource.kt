@@ -11,6 +11,10 @@ import org.jsoup.nodes.Element
 abstract class ParsedAnimeHttpSource(sourceId : Long) : AnimeHttpSource() {
     override val id: Long = sourceId
 
+    // Video Infos
+
+    open fun getEpisodeTooltip() : String = throw Exception("Stub")
+
     // Search Animes
 
     protected abstract fun searchSelector(): String

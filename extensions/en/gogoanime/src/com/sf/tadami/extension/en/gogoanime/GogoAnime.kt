@@ -3,7 +3,6 @@ package com.sf.tadami.extension.en.gogoanime
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.en.gogoanime.filters.GogoAnimeFilters
 import com.sf.tadami.lib.doodextractor.DoodExtractor
 import com.sf.tadami.lib.gogostreamextractor.GogoStreamExtractor
@@ -11,9 +10,7 @@ import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.mp4uploadextractor.Mp4uploadExtractor
 import com.sf.tadami.lib.streamwishextractor.StreamWishExtractor
 import com.sf.tadami.network.GET
-import com.sf.tadami.network.asCancelableObservable
 import com.sf.tadami.network.asJsoup
-import com.sf.tadami.network.asObservable
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.SEpisode
@@ -23,7 +20,6 @@ import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesC
 import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
-import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request

@@ -5,9 +5,9 @@ import com.sf.tadami.lib.playlistutils.PlaylistUtils
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
+import dev.datlag.jsunpacker.JsUnpacker
 import okhttp3.Headers
 import okhttp3.OkHttpClient
-import dev.datlag.jsunpacker.JsUnpacker
 import org.json.JSONObject
 
 class MilvayoExtractor(private val client: OkHttpClient, private val headers: Headers) {
