@@ -3,6 +3,7 @@ package com.sf.tadami.extension.fr.animesama
 import android.text.Html
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.fr.animesama.extractors.OneUploadExtractor
 import com.sf.tadami.lib.i18n.i18n
@@ -141,6 +142,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 dataStore.editPreference(
                     streamOrder.joinToString(separator = ","),
                     AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                )
+            }
+
+            if (oldVersion < 18) {
+                dataStore.editPreference(
+                    "https://anime-sama.org",
+                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
                 )
             }
         }
