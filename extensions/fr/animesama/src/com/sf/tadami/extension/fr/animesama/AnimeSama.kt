@@ -177,8 +177,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
     override fun latestAnimeFromElement(element: Element): SAnime {
-        val titleText = element.selectFirst("h1")?.text() ?: ""
-        val lang = element.selectFirst("h1 + hr + div button:first-of-type")?.text()?.trim() ?: ""
+        val titleText = element.selectFirst("h2.card-title")?.text() ?: ""
+        val lang = element.selectFirst("div.language-badge-top > img.flag-icon")?.attr("title")?.trim() ?: ""
         val titleLang =
             if (lang.lowercase() == "vostfr") "" else "${lang.uppercase(Locale.getDefault())} "
         val title = "$titleLang$titleText"
@@ -307,7 +307,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
-        anime.title = element.selectFirst("h1")?.text() ?: ""
+        anime.title = element.selectFirst("h2.card-title")?.text() ?: ""
         anime.thumbnailUrl = element.select("img").attr("src")
         anime.setUrlWithoutDomain(element.selectFirst("a")!!.attr("href").removeSuffix("/"))
         return anime
