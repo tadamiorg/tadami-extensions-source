@@ -165,6 +165,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
                 )
             }
+
+            if (oldVersion < 22) {
+                dataStore.editPreference(
+                    "https://anime-sama.si",
+                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
+                )
+            }
         }
         return true
     }
