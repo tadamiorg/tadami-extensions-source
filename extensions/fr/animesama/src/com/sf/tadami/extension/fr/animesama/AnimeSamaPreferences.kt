@@ -14,7 +14,7 @@ data class AnimeSamaPreferences(
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<AnimeSamaPreferences> {
-        const val DEFAULT_BASE_URL = "https://anime-sama.eu"
+        const val DEFAULT_BASE_URL = "https://anime-sama.si"
         val BASE_URL = stringPreferencesKey("base_url")
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "sibnet" to "Sibnet",
