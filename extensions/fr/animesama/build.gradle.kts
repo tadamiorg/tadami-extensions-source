@@ -6,7 +6,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",22)
+        set("extVersionCode",23)
         set("extName","AnimeSama")
         set("pkgNameSuffix","fr.animesama")
         set("extClass",".AnimeSama")
@@ -18,6 +18,7 @@ apply(from = "$rootDir/common.gradle")
 dependencies {
     implementation(project(":lib:playlist-utils"))
     implementation(project(":lib:sendvid-extractor"))
+    implementation(project(":lib:lpayer-extractor"))
     implementation(project(":lib:vk-extractor"))
     implementation(project(":lib:sibnet-extractor"))
     implementation(project(":lib:yourupload-extractor"))

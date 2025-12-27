@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.fr.animesama.extractors.OneUploadExtractor
 import com.sf.tadami.lib.i18n.i18n
+import com.sf.tadami.lib.lpayerextractor.LpayerExtractor
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.smoothpreextractor.SmoothPreExtractor
@@ -172,6 +173,23 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
                 )
             }
+
+            if (oldVersion < 23) {
+                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
+
+                if (!streamOrder.contains("lpayer")) {
+                    streamOrder.add("lpayer")
+                }
+
+                if (!streamOrder.contains("callistanise")) {
+                    streamOrder.add("callistanise")
+                }
+
+                dataStore.editPreference(
+                    streamOrder.joinToString(separator = ","),
+                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
+                )
+            }
         }
         return true
     }
@@ -199,7 +217,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     override fun latestAnimeFromElement(element: Element): SAnime {
         val titleText = element.selectFirst("h2.card-title")?.text() ?: ""
-        val lang = element.selectFirst("div.language-badge-top > img.flag-icon")?.attr("title")?.trim() ?: ""
+        val lang =
+            element.selectFirst("div.language-badge-top > img.flag-icon")?.attr("title")?.trim()
+                ?: ""
         val titleLang =
             if (lang.lowercase() == "vostfr") "" else "${lang.uppercase(Locale.getDefault())} "
         val title = "$titleLang$titleText"
@@ -535,6 +555,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         val streamSourcesList = mutableListOf<StreamSource>()
         val rawStreamSourceUrls = mutableListOf<String>()
         val newClient = client.shortTimeOutBuilder()
+
         streamSourcesList.addAll(
             variableArrays.values.parallelMap { urls ->
                 runCatching {
@@ -543,36 +564,64 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     rawStreamSourceUrls.add(streamUrl)
 
                     when {
-                        streamUrl.contains("sendvid.com") -> {
+                        listOf("sendvid.com", "sendvid").any { streamUrl.contains(it) } -> {
                             SendvidExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
 
-                        streamUrl.contains("sibnet.ru") -> {
+                        listOf("sibnet.ru", "sibnet").any { streamUrl.contains(it) } -> {
                             SibnetExtractor(newClient).videosFromUrl(streamUrl)
                         }
 
-                        streamUrl.contains("vkvideo.ru") -> {
+                        listOf("vkvideo.ru").any { streamUrl.contains(it) } -> {
                             VkExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
 
-                        streamUrl.contains("yourupload.com") -> {
+                        listOf("yourupload.com").any { streamUrl.contains(it) } -> {
                             YourUploadExtractor(newClient).videosFromUrl(streamUrl, headers)
                         }
 
-                        streamUrl.contains("vidmoly") -> {
-                            VidmolyExtractor(newClient, headers).videosFromUrl(streamUrl.replace("vidmoly.to","vidmoly.net"))
+                        listOf(
+                            "vidmoly.net",
+                            "vidmoly.to",
+                            "vidmoly"
+                        ).any { streamUrl.contains(it) } -> {
+                            VidmolyExtractor(
+                                newClient,
+                                headers
+                            ).videosFromUrl(streamUrl.replace("vidmoly.to", "vidmoly.net"))
                         }
 
-                        streamUrl.contains("oneupload") -> {
+                        listOf("oneupload.to", "oneupload").any { streamUrl.contains(it) } -> {
                             OneUploadExtractor(newClient, headers).videosFromUrl(streamUrl)
                         }
 
-                        streamUrl.contains("Smoothpre.com") -> {
+                        listOf("Smoothpre.com").any { streamUrl.contains(it) } -> {
                             SmoothPreExtractor(newClient).videosFromUrl(streamUrl)
                         }
 
-                        streamUrl.contains("movearnpre") -> {
-                            VidHideExtractor(newClient, "https://HI3THh5OxxWw.ovaltinecdn.com").videosFromUrl(streamUrl)
+                        listOf("movearnpre.com", "movearnpre").any { streamUrl.contains(it) } -> {
+                            VidHideExtractor(
+                                newClient,
+                                "https://HI3THh5OxxWw.ovaltinecdn.com"
+                            ).videosFromUrl(streamUrl)
+                        }
+
+                        listOf(
+                            "lpayer.embed4me.com",
+                            "embed4me",
+                            "lpayer"
+                        ).any { streamUrl.contains(it) } -> {
+                            LpayerExtractor(newClient).videosFromUrl(streamUrl)
+                        }
+
+                        listOf(
+                            "dingtezuni",
+                            "callistanise",
+                        ).any { streamUrl.contains(it) } -> {
+                            VidHideExtractor(
+                                newClient,
+                                baseUrl = ""
+                            ).videosFromUrl(streamUrl,"Callistanise","Callistanise")
                         }
 
                         else -> null

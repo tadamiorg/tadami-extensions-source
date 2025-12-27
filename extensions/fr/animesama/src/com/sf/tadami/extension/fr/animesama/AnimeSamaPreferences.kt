@@ -9,8 +9,8 @@ import com.sf.tadami.preferences.model.CustomPreferencesIdentifier
 
 data class AnimeSamaPreferences(
     val baseUrl: String,
-    val playerStreamsOrder : String,
-    val lastVersionCode : Int
+    val playerStreamsOrder: String,
+    val lastVersionCode: Int
 ) : CustomPreferencesIdentifier {
 
     companion object : CustomPreferences<AnimeSamaPreferences> {
@@ -19,20 +19,25 @@ data class AnimeSamaPreferences(
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
             "sibnet" to "Sibnet",
             "vidmoly" to "VidMoly",
+            "lpayer" to "LPayer",
+            "callistanise" to "Callistanise",
+            "sendvid" to "Sendvid",
             "vidhide" to "VidHide",
             "smoothpre" to "SmoothPre",
-            "sendvid" to "Sendvid",
             "vk" to "Vk",
             "oneupload" to "OneUpload",
             "yourupload" to "YourUpload",
+
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
-        val LAST_VERSION_CODE = intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))
+        val LAST_VERSION_CODE =
+            intPreferencesKey(CustomPreferences.appStateKey("last_version_code"))
 
         override fun transform(preferences: Preferences): AnimeSamaPreferences {
             return AnimeSamaPreferences(
                 baseUrl = preferences[BASE_URL] ?: DEFAULT_BASE_URL,
-                playerStreamsOrder =  preferences[PLAYER_STREAMS_ORDER] ?: DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString(separator = "," ),
+                playerStreamsOrder = preferences[PLAYER_STREAMS_ORDER]
+                    ?: DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString(separator = ","),
                 lastVersionCode = preferences[LAST_VERSION_CODE] ?: 0,
             )
         }
