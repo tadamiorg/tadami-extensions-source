@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(if [ -f \"/d/Development/Github/AnimeScrapers/TadamiProject/tadami-extensions-source/README.md\" ])",
+      "Bash(then cat \"/d/Development/Github/AnimeScrapers/TadamiProject/tadami-extensions-source/README.md\")",
+      "Bash(else echo \"File not found\")",
+      "Bash(fi)",
+      "Bash(tree:*)"
+    ]
+  }
+}

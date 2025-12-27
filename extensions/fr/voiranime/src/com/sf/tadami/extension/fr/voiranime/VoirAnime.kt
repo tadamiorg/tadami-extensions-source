@@ -2,9 +2,6 @@ package com.sf.tadami.extension.fr.voiranime
 
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
-import com.sf.tadami.App
-import com.sf.tadami.extension.fr.voiranime.recaptcha.IframeDto
-import com.sf.tadami.extension.fr.voiranime.recaptcha.interceptor.RecaptchaInterceptorV2
 import com.sf.tadami.lib.filemoonextractor.FileMoonExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.mailruextractor.MailRuExtractor
@@ -28,7 +25,6 @@ import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import okhttp3.Call
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -36,7 +32,6 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.injectLazy
-import java.util.concurrent.CountDownLatch
 
 class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     sourceId = 4,
@@ -270,122 +265,73 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         episode.episodeNumber = if (element.select("a").text().contains("film", true)) {
             index.toFloat()
         } else {
-            element.select("a").text().trim().substringAfter("-")
-                .substringBefore("V").trim().toFloat()
+            try {
+                element.select("a").text().trim().substringAfterLast("-")
+                    .substringBeforeLast("V").trim().toFloat()
+            }catch (err : Exception){
+                Log.d("VoirAnime", "Error parsing episode number: ${err.message}")
+                index.toFloat()
+            }
         }
+
         return episode
     }
 
     override fun fetchEpisodeSources(url: String): Observable<List<StreamSource>> {
-        val callMap = mutableMapOf<String, Pair<Call, CountDownLatch>>()
         return client.newCall(GET(baseUrl + url, headers)).asCancelableObservable().map { res ->
             val document = res.asJsoup()
 
-            val animeId = document.select("#manga-reading-nav-head").attr("data-id")
-            val episodeId = document.select("#wp-manga-current-chap").attr("data-id")
+            // Extract iframe URLs directly from the thisChapterSources JavaScript object
+            val scriptContent = document.select("script").firstOrNull {
+                it.html().contains("var thisChapterSources")
+            }?.html() ?: ""
 
             val streamSourcesList = mutableListOf<StreamSource>()
-            streamSourcesList.addAll(
-                document.select("#manga-reading-nav-foot select.host-select > option")
-                    .map { server ->
-                        try {
-                            val serverName = server.attr("value")
-                            val latch = CountDownLatch(1)
-                            val newClient = client
-                                .newBuilder()
-                                .addInterceptor(
-                                    RecaptchaInterceptorV2(
-                                        context = App.getAppContext()!!,
-                                        animeId = animeId,
-                                        episodeId = episodeId,
-                                        host = serverName,
-                                        ajaxUrl = "$baseUrl/wp-admin/admin-ajax.php",
-                                        latch = latch
-                                    )
-                                ).build()
 
-                            val call = newClient.newCall(
-                                GET(
-                                    baseUrl + url,
-                                    headersBuilder().add(
-                                        "User-Agent",
-                                        getRandomUA()
-                                    ).build()
-                                )
-                            )
-                            callMap[serverName] = Pair(call, latch)
-                            val iframeUrl = iframeRequest(call)
+            // Parse the thisChapterSources object to extract iframe src URLs
+            val iframeRegex = Regex("""\"(LECTEUR [^\"]+)\":\s*\"<iframe[^>]*src=\\\"([^\"]+)\\\"""")
+            val matches = iframeRegex.findAll(scriptContent)
 
-                            when (serverName) {
-                                "LECTEUR VOE" -> {
-                                    VoeExtractor(client, json).videosFromUrl(url = iframeUrl)
-                                }
+            matches.forEach { match ->
+                try {
+                    val serverName = match.groupValues[1]
+                    val iframeUrl = match.groupValues[2].replace("\\", "")
 
-                                "LECTEUR myTV" -> {
-                                    VidmolyExtractor(
-                                        client,
-                                        headers
-                                    ).videosFromUrl(url = iframeUrl)
-
-                                }
-
-                                "LECTEUR YU" -> {
-                                    YourUploadExtractor(client).videosFromUrl(
-                                        url = iframeUrl,
-                                        headers = headers
-                                    )
-                                }
-
-                                "LECTEUR MOON" -> {
-                                    FileMoonExtractor(client).videosFromUrl(url = iframeUrl)
-                                }
-
-                                "LECTEUR Stape" -> {
-                                    StreamTapeExtractor(client).videosFromUrl(url = iframeUrl)
-                                }
-
-                                "LECTEUR FHD1" -> {
-                                    MailRuExtractor(client, headers).videosFromUrl(url = iframeUrl)
-                                }
-
-                                else -> null
-                            }
-                        } catch (e: Exception) {
-                            Log.e("VoirAnime", e.stackTraceToString())
+                    val sources = when (serverName) {
+                        "LECTEUR VOE" -> {
+                            VoeExtractor(client, json).videosFromUrl(url = iframeUrl)
                         }
+                        "LECTEUR myTV" -> {
+                            VidmolyExtractor(client, headers).videosFromUrl(url = iframeUrl)
+                        }
+                        "LECTEUR YU" -> {
+                            YourUploadExtractor(client).videosFromUrl(
+                                url = iframeUrl,
+                                headers = headers
+                            )
+                        }
+                        "LECTEUR MOON" -> {
+                            FileMoonExtractor(client).videosFromUrl(url = iframeUrl)
+                        }
+                        "LECTEUR Stape" -> {
+                            StreamTapeExtractor(client).videosFromUrl(url = iframeUrl)
+                        }
+                        "LECTEUR FHD1" -> {
+                            MailRuExtractor(client, headers).videosFromUrl(url = iframeUrl)
+                        }
+                        else -> null
+                    }
 
-                        return@map null
-                    }.filterNotNull().flatten(),
-            )
-            streamSourcesList.sort()
-        }.doOnDispose {
-            callMap.values.forEach {
-                it.second.countDown()
-                it.first.cancel()
+                    sources?.let { streamSourcesList.addAll(it) }
+                } catch (e: Exception) {
+                    Log.e("VoirAnime", "Error extracting from server: ${e.message}")
+                }
             }
-            callMap.clear()
+
+            streamSourcesList.sort()
         }
     }
 
-    private fun iframeRequest(call: Call): String {
-        val iframeResponse = call.execute().use { it.body.string() }
-        val data = json.decodeFromString<IframeDto>(iframeResponse).data
-        return data.substringAfter("src=\"").substringBefore("\"")
-    }
-
-    private fun getRandomUA(): String {
-        val uas = listOf(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/121.0.2277.128",
-            "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-            "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Vivaldi/6.5.3206.63",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Vivaldi/6.5.3206.63"
-        )
-        return uas.random()
-    }
 
     override fun List<StreamSource>.sort(): List<StreamSource> {
         return this.groupBy { it.server.lowercase() }.entries
