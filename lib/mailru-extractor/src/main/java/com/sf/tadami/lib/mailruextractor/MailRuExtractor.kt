@@ -51,7 +51,7 @@ class MailRuExtractor(private val client: OkHttpClient, private val headers: Hea
                 .replace(urlRegex, "https://")
                 .replace(".mp4", ".mp4/stream.mpd")
 
-            StreamSource(url = videoUrl, fullName = "MailRu ${it.key}", server = "MailRu", headers = videoHeaders)
+            StreamSource(url = videoUrl, fullName = "MailRu - ${it.key}", quality = it.key, server = "MailRu", headers = videoHeaders)
         }
     }
 

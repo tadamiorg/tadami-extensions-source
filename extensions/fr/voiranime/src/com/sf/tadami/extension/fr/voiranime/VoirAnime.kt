@@ -52,12 +52,15 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     private val i18n = i18n(VoirAnimeTranslations)
 
     init {
-        runBlocking {
+        val migrated = runBlocking {
             preferencesMigrations()
+        }
+        if (migrated) {
+            Log.i("VoirAnime", "Successfully migrated preferences")
         }
     }
 
-    private suspend fun preferencesMigrations() {
+    private suspend fun preferencesMigrations() : Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
             dataStore.editPreference(
@@ -67,9 +70,10 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
 
             // Fresh install
             if (oldVersion == 0) {
-                return
+                return false;
             }
         }
+        return true
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
