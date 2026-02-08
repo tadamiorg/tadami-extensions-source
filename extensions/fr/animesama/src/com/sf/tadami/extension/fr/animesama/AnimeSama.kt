@@ -31,7 +31,11 @@ import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -59,6 +63,28 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     private val i18n = i18n(AnimeSamaTranslations)
 
+    private fun getMainUrl() {
+        runBlocking {
+            launch(Dispatchers.IO){
+                try{
+                    val mainUrl = client.newCall(Request.Builder().url(baseUrl).build()).execute().use { response ->
+                        val finalUrl = response.request.url
+                        "${finalUrl.scheme}://${finalUrl.host}"
+                    }
+
+                    if(mainUrl == baseUrl) return@launch
+
+                    dataStore.editPreference(
+                        mainUrl,
+                        stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
+                    )
+                } catch(e: Exception){
+                    Log.e("AnimeSama", "Error getting main url", e)
+                }
+            }
+        }
+    }
+
     init {
         val migrated = runBlocking {
             preferencesMigrations()
@@ -66,6 +92,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         if (migrated) {
             Log.i("AnimeSama", "Successfully migrated preferences")
         }
+        getMainUrl()
     }
 
 
@@ -82,96 +109,6 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             // Fresh install
             if (oldVersion == 0) {
                 return false
-            }
-
-            if (oldVersion < 7) {
-                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
-                if (!streamOrder.contains("yourupload")) {
-                    streamOrder.add("yourupload")
-                    dataStore.editPreference(
-                        streamOrder.joinToString(separator = ","),
-                        AnimeSamaPreferences.PLAYER_STREAMS_ORDER
-                    )
-                }
-            }
-
-            if (oldVersion < 8) {
-                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
-                if (!streamOrder.contains("vidmoly")) {
-                    streamOrder.add("vidmoly")
-                }
-                if (streamOrder.contains("animesama")) {
-                    streamOrder.remove("animesama")
-                }
-
-                dataStore.editPreference(
-                    streamOrder.joinToString(separator = ","),
-                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
-                )
-            }
-
-            if (oldVersion < 10) {
-                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
-                if (!streamOrder.contains("oneupload")) {
-                    streamOrder.add("oneupload")
-                }
-
-                dataStore.editPreference(
-                    streamOrder.joinToString(separator = ","),
-                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
-                )
-            }
-
-            if (oldVersion < 15) {
-                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
-                if (!streamOrder.contains("smoothpre")) {
-                    streamOrder.add("smoothpre")
-                }
-
-                dataStore.editPreference(
-                    streamOrder.joinToString(separator = ","),
-                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
-                )
-            }
-
-            if (oldVersion < 17) {
-                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
-                if (!streamOrder.contains("vidhide")) {
-                    streamOrder.add("vidhide")
-                }
-
-                dataStore.editPreference(
-                    streamOrder.joinToString(separator = ","),
-                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
-                )
-            }
-
-            if (oldVersion < 18) {
-                dataStore.editPreference(
-                    "https://anime-sama.org",
-                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
-                )
-            }
-
-            if (oldVersion < 20) {
-                dataStore.editPreference(
-                    "https://anime-sama.eu",
-                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
-                )
-            }
-
-            if (oldVersion < 21) {
-                dataStore.editPreference(
-                    "https://anime-sama.si",
-                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
-                )
-            }
-
-            if (oldVersion < 22) {
-                dataStore.editPreference(
-                    "https://anime-sama.si",
-                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
-                )
             }
 
             if (oldVersion < 23) {
@@ -620,7 +557,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         ).any { streamUrl.contains(it) } -> {
                             VidHideExtractor(
                                 newClient,
-                                baseUrl = ""
+                                baseUrl = streamUrl.toHttpUrl().origin()
                             ).videosFromUrl(streamUrl,"Callistanise","Callistanise")
                         }
 
@@ -674,5 +611,14 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     }
                 ).reversed()
             }
+    }
+
+   private fun HttpUrl.origin(): String {
+        val portPart = if ((scheme == "https" && port == 443) || (scheme == "http" && port == 80)) {
+            ""
+        } else {
+            ":$port"
+        }
+        return "$scheme://$host$portPart"
     }
 }

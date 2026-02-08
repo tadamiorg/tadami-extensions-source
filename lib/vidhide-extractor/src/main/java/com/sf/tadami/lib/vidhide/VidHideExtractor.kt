@@ -1,12 +1,12 @@
 package com.sf.tadami.lib.vidhide
 
+import android.util.Log
 import com.sf.tadami.lib.playlistutils.PlaylistUtils
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
 import dev.datlag.jsunpacker.JsUnpacker
 import okhttp3.OkHttpClient
-import org.json.JSONObject
 
 class VidHideExtractor(private val client: OkHttpClient, private val baseUrl: String) {
 
@@ -24,43 +24,67 @@ class VidHideExtractor(private val client: OkHttpClient, private val baseUrl: St
                 }
             }
 
-        val urls = scriptBody
-            ?.substringAfter("links=", "")
-            ?.substringBefore(";", "")
-            ?.takeIf(String::isNotBlank)
-            ?: return emptyList()
+        val regex = """var links=(\{[^}]+\});""".toRegex()
+        val matchResult = regex.find(scriptBody ?: "")
 
-        val jsonObject = JSONObject(urls)
+        if(matchResult == null){
+            Log.d(VidHideExtractor::class.java.name,"Could not find video source in $url")
+            return emptyList()
+        }
 
-        val m3u8Links = jsonObject.keys().asSequence()
-            .map { jsonObject.getString(it) }
-            .filter { it.contains(".m3u8") }
+        val linksJson = matchResult.groupValues[1]
+
+        // Find all URLs containing .m3u8
+        val urlRegex = """"([^"]*\.m3u8[^"]*)"""".toRegex()
+        val m3u8Urls = urlRegex.findAll(linksJson)
+            .map { it.groupValues[1] }
             .toList()
-            .takeIf { it.isNotEmpty() }
-            ?: return emptyList()
 
+        if(m3u8Urls.isEmpty()){
+            Log.d(VidHideExtractor::class.java.name,"Could not find video source in $url")
+            return emptyList()
+        }
 
-        val baseNameCounts = m3u8Links.flatMap { link ->
+        // Track which URLs successfully extracted
+        val successfulUrls = mutableSetOf<String>()
+
+        val baseNameCounts = m3u8Urls.flatMap { link ->
             var masterUrl = link
             if (!link.startsWith("https:")) {
                 masterUrl = "$baseUrl$link"
             }
 
-            playlistUtils.extractFromHls(
-                playlistUrl = masterUrl,
-                referer = url,
-                videoNameGen = { baseName ->
-                    "${prefix}${if (baseName.isNotEmpty()) " - $baseName" else ""}"
+            try {
+                val results = playlistUtils.extractFromHls(
+                    playlistUrl = masterUrl,
+                    referer = url,
+                    videoNameGen = { baseName ->
+                        "${prefix}${if (baseName.isNotEmpty()) " - $baseName" else ""}"
+                    }
+                ).map {
+                    it.copy(server = server)
                 }
-            ).map {
-                it.copy(server = server)
+
+                // Mark this URL as successful
+                successfulUrls.add(link)
+                results
+            } catch (e: Exception) {
+                Log.d(VidHideExtractor::class.java.name, "Error extracting video source from $masterUrl: ${e.message}")
+                emptyList() // Return empty list on error
             }
         }.groupingBy { it.fullName }.eachCount()
 
+        // Filter to only successful URLs
+        val validM3u8Urls = m3u8Urls.filter { it in successfulUrls }
+
+        if(validM3u8Urls.isEmpty()){
+            Log.d(VidHideExtractor::class.java.name,"All URLs failed to extract")
+            return emptyList()
+        }
 
         val nameInstanceCount = mutableMapOf<String, Int>()
 
-        return m3u8Links.map { link ->
+        return validM3u8Urls.map { link ->
             var masterUrl = link
             if (!link.startsWith("https:")) {
                 masterUrl = "$baseUrl$link"
