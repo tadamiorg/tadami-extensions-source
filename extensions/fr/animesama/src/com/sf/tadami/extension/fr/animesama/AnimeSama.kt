@@ -305,17 +305,19 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return client.newCall(animeDetailsRequest(anime))
             .asCancelableObservable()
             .map { response ->
+                Log.d("AnimeSama", "fetchAnimeDetails: ${response.request.url.toString()}")
                 animeDetailsParse(response.asJsoup(), anime)
             }
     }
 
     private fun animeDetailsParse(document: Document, dbAnime: Anime): SAnime {
         val anime = SAnime.create()
-        val animeTitle = document.selectFirst("#titreOeuvre")?.text()
+        val animeTitle = document.selectFirst("h1")?.text()
         val seasonRegex = Regex(
             "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
             RegexOption.MULTILINE
         )
+
         val scripts = document.select("h2 + p + div > script, h2 + div > script").toString()
         val foundSeason = seasonRegex.findAll(scripts).find { match ->
             val (_, seasonUrl) = match.destructured
@@ -332,9 +334,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
         anime.title = seasonName
         anime.description =
-            document.selectFirst("h2:contains(Synopsis) ~ p.text-sm.text-gray-400.mt-2")?.text()
-        anime.genres = document.selectFirst("h2:contains(Genres) ~ a")?.text()?.trim()
-            ?.split(Regex("""( - )|,"""))
+            document.selectFirst("#synopsisText")?.text()
+        anime.genres = document.select(".genres-wrap span").map { it.text().trim() }
         anime.thumbnailUrl = document.selectFirst("meta[itemprop=image]")?.attr("content")
         return anime
     }
@@ -491,7 +492,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         }
         val streamSourcesList = mutableListOf<StreamSource>()
         val rawStreamSourceUrls = mutableListOf<String>()
-        val newClient = client.shortTimeOutBuilder()
+        val newClient = client.shortTimeOutBuilder(15)
 
         streamSourcesList.addAll(
             variableArrays.values.parallelMap { urls ->
@@ -540,6 +541,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                             VidHideExtractor(
                                 newClient,
                                 "https://HI3THh5OxxWw.ovaltinecdn.com"
+                            ).videosFromUrl(streamUrl)
+                        }
+
+                        listOf("minochinos.com").any { streamUrl.contains(it) } -> {
+                            VidHideExtractor(
+                                newClient,
+                                baseUrl = streamUrl.toHttpUrl().origin()
                             ).videosFromUrl(streamUrl)
                         }
 

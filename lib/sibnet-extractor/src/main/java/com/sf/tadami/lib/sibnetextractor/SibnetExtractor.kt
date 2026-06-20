@@ -1,5 +1,6 @@
 package com.sf.tadami.lib.sibnetextractor
 
+import android.util.Log
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
@@ -10,6 +11,7 @@ import okhttp3.OkHttpClient
 class SibnetExtractor(private val client: OkHttpClient) {
 
     fun videosFromUrl(url: String, prefix: String = "", suffix: String = ""): List<StreamSource> {
+        Log.d("Sibnet", "Extracting videos from URL: $url")
         val videoList = mutableListOf<StreamSource>()
 
         val document = client.newCall(
@@ -20,11 +22,15 @@ class SibnetExtractor(private val client: OkHttpClient) {
         val slug = script.substringAfter("player.src").substringAfter("src:")
             .substringAfter("\"").substringBefore("\"")
 
+        Log.d("Sibnet", "Extracted slug: $slug")
+
         val videoUrl = if (slug.contains("http")) {
             slug
         } else {
             "https://${url.toHttpUrl().host}$slug"
         }
+
+        Log.d("Sibnet", "Extracted video URL: $videoUrl")
 
         val videoHeaders = Headers.headersOf(
             "Referer",

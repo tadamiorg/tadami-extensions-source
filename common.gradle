@@ -21,7 +21,6 @@ android {
         targetSdkVersion build.versions.targetSdk.get().toInteger()
         versionCode extVersionCode
         versionName project.ext.properties.getOrDefault("apiVersion", build.versions.latestApiVersion.get()) + ".$extVersionCode"
-        archivesBaseName = "tadami-$pkgNameSuffix-v$versionName"
         manifestPlaceholders = [
                 appName : "Tadami: $extName",
                 extClass: extClass
@@ -44,6 +43,7 @@ android {
         }
     }
 
+
     dependenciesInfo {
         includeInApk = false
     }
@@ -58,14 +58,10 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8.toString()
-        freeCompilerArgs += "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
-    }
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             outputFileName = "tadami-${pkgNameSuffix}-v${versionName}.apk"

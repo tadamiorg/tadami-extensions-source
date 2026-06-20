@@ -1,5 +1,5 @@
 [versions]
-compileSdk = "35"
+compileSdk = "37"
 minSdk = "28"
-targetSdk = "35"
+targetSdk = "37"
 latestApiVersion = "1.4"
