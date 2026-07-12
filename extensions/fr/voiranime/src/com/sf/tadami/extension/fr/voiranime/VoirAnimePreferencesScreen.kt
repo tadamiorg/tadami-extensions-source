@@ -9,7 +9,7 @@ fun getVoirAnimePreferencesContent(
 ) : SourcesPreferencesContent {
 
     return SourcesPreferencesContent(
-        title = "AnimeSama",
+        title = "VoirAnime",
         preferences = listOf(
             SourcePreference.PreferenceCategory(
                 title = i18n.getString("category_network"),

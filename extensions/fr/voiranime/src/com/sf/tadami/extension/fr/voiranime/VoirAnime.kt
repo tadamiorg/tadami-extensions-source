@@ -41,7 +41,8 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
 
     override val name: String = "VoirAnime"
 
-    override val baseUrl: String = preferences.baseUrl
+    override val baseUrl: String
+        get() = preferences.baseUrl
 
     override val lang: Lang = Lang.FRENCH
 
@@ -71,6 +72,13 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
             // Fresh install
             if (oldVersion == 0) {
                 return false;
+            }
+
+            if (oldVersion < 4) {
+                dataStore.editPreference(
+                    VoirAnimePreferences.DEFAULT_BASE_URL,
+                    VoirAnimePreferences.BASE_URL
+                )
             }
         }
         return true
@@ -235,7 +243,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         val anime = SAnime.create()
 
         anime.title = document.select("div.post-title h1").text()
-        anime.genres = document.select("div.genre-content a").map { it.text() }
+        anime.genres = document.select("div.genres-content a").map { it.text() }
         anime.description = document.selectFirst("div.description-summary p")?.text()
         val rightColumnValues = document.select("div.summary_content div.post-content_item")
         anime.status = rightColumnValues.find {
@@ -301,6 +309,8 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
                     val serverName = match.groupValues[1]
                     val iframeUrl = match.groupValues[2].replace("\\", "")
 
+                    Log.d("VoirAnime",iframeUrl)
+
                     val sources = when (serverName) {
                         "LECTEUR VOE" -> {
                             VoeExtractor(client, json).videosFromUrl(url = iframeUrl)
@@ -315,7 +325,10 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
                             )
                         }
                         "LECTEUR MOON" -> {
-                            FileMoonExtractor(client).videosFromUrl(url = iframeUrl)
+                            FileMoonExtractor(client).videosFromUrl(
+                                url = iframeUrl,
+                                embedOrigin = baseUrl.substringAfter("://").substringBefore("/")
+                            )
                         }
                         "LECTEUR Stape" -> {
                             StreamTapeExtractor(client).videosFromUrl(url = iframeUrl)

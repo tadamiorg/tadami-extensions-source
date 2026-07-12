@@ -7,7 +7,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",3)
+        set("extVersionCode",4)
         set("extName","VoirAnime")
         set("pkgNameSuffix","fr.voiranime")
         set("extClass",".VoirAnime")
