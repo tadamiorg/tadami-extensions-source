@@ -2,6 +2,7 @@ package com.sf.tadami.lib.vidmolyextractor
 
 import android.util.Log
 import com.sf.tadami.lib.playlistutils.PlaylistUtils
+import com.sf.tadami.lib.unpacker.Unpacker
 import com.sf.tadami.network.GET
 import com.sf.tadami.source.model.StreamSource
 import okhttp3.Headers
@@ -28,17 +29,23 @@ class VidmolyExtractor(private val client: OkHttpClient, private val headers: He
 
         val body = client.newCall(GET(url, actualHeaders)).execute().body.string()
 
+        // Vidmoly usually serves the player config as plaintext, but some mirrors wrap it
+        // in Dean-Edwards packed JS. Unpack defensively and search both.
+        val unpacked = runCatching { Unpacker.unpack(body) }.getOrNull()?.takeIf { it.isNotBlank() }
+        val source = listOfNotNull(unpacked, body).joinToString("\n")
 
-
+        // The jwplayer setup lists a `thumbnails` track (file: '/api/v1/slides...') BEFORE the
+        // real stream (sources: [{ file: '...master.m3u8' }]). Target the sources entry / an
+        // explicit .m3u8 first so we never grab the preview thumbnail by mistake.
         val patterns = listOf(
-            Regex("""file:\s*['"]([^"']+)"""),
-            Regex("""sources:\s*\[\s*\{[^}]*file:\s*["']([^"']+)"""),
-            Regex("""source\s*src=["']([^"']+\.m3u8[^"']*)""")
+            Regex("""sources:\s*\[\s*\{\s*file:\s*["']([^"']+)"""),
+            Regex("""file:\s*["'](https?[^"']+\.m3u8[^"']*)"""),
+            Regex("""source\s+src=["']([^"']+\.m3u8[^"']*)""")
         )
 
         var masterUrl: String? = null
         for (pattern in patterns) {
-            val match = pattern.find(body)
+            val match = pattern.find(source)
 
             if (match != null && match.groupValues.size > 1) {
                 masterUrl = match.groupValues[1]

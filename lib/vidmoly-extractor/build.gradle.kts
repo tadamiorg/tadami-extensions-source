@@ -26,4 +26,5 @@ dependencies {
     compileOnly(project(":api"))
     compileOnly(libs.bundles.common)
     implementation(project(":lib:playlist-utils"))
+    implementation(project(":lib:unpacker"))
 }
