@@ -24,6 +24,7 @@ import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
 import com.sf.tadami.source.model.SEpisode
+import com.sf.tadami.source.model.SSeason
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
 import com.sf.tadami.ui.tabs.browse.tabs.sources.preferences.SourcesPreferencesContent
@@ -56,6 +57,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     override val lang: Lang = Lang.FRENCH
 
     override val client: OkHttpClient = network.cloudflareClient
+
+    override val hasSeasons: Boolean = true
 
     private var episodeNumber: Int? = null
 
@@ -164,6 +167,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         anime.title = title
         anime.thumbnailUrl = element.selectFirst("img")?.attr("src")
         anime.setUrlWithoutDomain(element.attr("href").removeSuffix("/"))
+        anime.url = seriesUrl(anime.url)
         return anime
     }
 
@@ -183,8 +187,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     ): Observable<AnimesPage> {
         return client.newCall(searchAnimeRequest(page, query.trim(), filters, noToasts))
             .asCancelableObservable()
-            .flatMap { response ->
-
+            .map { response ->
                 val document = response.asJsoup()
 
                 val animeList = document.select(searchSelector()).map { element ->
@@ -195,65 +198,35 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     document.select(selector).first()
                 } != null
 
-                val pageRequests = Observable.fromIterable(animeList).flatMap { anime ->
-                    client.newCall(GET("$baseUrl${anime.url}"))
-                        .asCancelableObservable()
-                        .map { response ->
-                            val doc = response.asJsoup()
-                            val seasonRegex = Regex(
-                                "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
-                                RegexOption.MULTILINE
-                            )
-                            val scripts =
-                                doc.select("h2 + p + div > script, h2 + div > script").toString()
-
-                            val seasons = seasonRegex.findAll(scripts)
-                                .fold(mutableListOf<Pair<String, String>>()) { acc, match ->
-                                    val (seasonName, seasonUrl) = match.destructured
-
-                                    VOICES_VALUES.parallelMap { voice ->
-                                        getLangUrl(
-                                            anime = anime,
-                                            seasonName = seasonName,
-                                            seasonUrl = seasonUrl,
-                                            lang = voice
-                                        )?.let {
-                                            acc.add(it)
-                                        }
-                                    }
-                                    acc
-                                }
-
-
-                            seasons.map { (seasonName, seasonUrl) ->
-                                val animeSeason = SAnime.create()
-                                animeSeason.url = "${anime.url}/$seasonUrl"
-                                animeSeason.thumbnailUrl = anime.thumbnailUrl
-                                animeSeason.title = "$seasonName - ${anime.title}"
-                                animeSeason
-                            }
-                        }
-                }.toList().toObservable()
-
-                pageRequests.map { pages ->
-                    val animeSeasons = pages.flatten()
-                    AnimesPage(animeSeasons, hasNextPage)
-                }
-
+                AnimesPage(animeList, hasNextPage)
             }
     }
 
+    /**
+     * Collapses any url (a series root or a `/saisonX/lang` season path) to the
+     * `/catalogue/<slug>` series root. Keeps legacy per-season library entries working.
+     */
+    private fun seriesUrl(url: String): String {
+        val parts = url.trim('/').split("/")
+        val idx = parts.indexOf("catalogue")
+        return if (idx >= 0 && parts.size > idx + 1) {
+            "/${parts[idx]}/${parts[idx + 1]}"
+        } else {
+            "/${url.trim('/')}"
+        }
+    }
+
     private fun getLangUrl(
-        anime: SAnime,
+        seriesUrl: String,
         seasonName: String,
         seasonUrl: String,
         lang: String
     ): Pair<String, String>? {
         try {
-            val isVo = lang === "vostfr"
+            val isVo = lang == "vostfr"
             val langUrlStem = "${seasonUrl.substringBeforeLast("/")}/$lang"
             val langRes =
-                client.newCall(HEAD("$baseUrl${anime.url}/$langUrlStem", headers)).execute()
+                client.newCall(HEAD("$baseUrl$seriesUrl/$langUrlStem", headers)).execute()
             if (langRes.isSuccessful) {
                 val titleLang = if (isVo) "" else "${lang.uppercase(Locale.getDefault())} "
                 return "$titleLang$seasonName" to langUrlStem
@@ -298,49 +271,72 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     // ============================== Anime Details ===============================
 
     override fun animeDetailsRequest(anime: Anime): Request {
-        return GET(baseUrl + anime.url + "/../..", headers)
+        return GET("$baseUrl${seriesUrl(anime.url)}", headers)
     }
 
     override fun fetchAnimeDetails(anime: Anime): Observable<SAnime> {
         return client.newCall(animeDetailsRequest(anime))
             .asCancelableObservable()
             .map { response ->
-                Log.d("AnimeSama", "fetchAnimeDetails: ${response.request.url.toString()}")
+                Log.d("AnimeSama", "fetchAnimeDetails: ${response.request.url}")
                 animeDetailsParse(response.asJsoup(), anime)
             }
     }
 
     private fun animeDetailsParse(document: Document, dbAnime: Anime): SAnime {
         val anime = SAnime.create()
-        val animeTitle = document.selectFirst("h1")?.text()
-        val seasonRegex = Regex(
-            "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
-            RegexOption.MULTILINE
-        )
-
-        val scripts = document.select("h2 + p + div > script, h2 + div > script").toString()
-        val foundSeason = seasonRegex.findAll(scripts).find { match ->
-            val (_, seasonUrl) = match.destructured
-            dbAnime.url.contains(seasonUrl.removeSuffix("/").substringBeforeLast("/") + "/")
-        }
-
-        var seasonName = dbAnime.title
-        if (foundSeason != null) {
-            val (name, _) = foundSeason.destructured
-            val lang = dbAnime.url.removeSuffix("/").substringAfterLast("/").uppercase()
-            val langTitle = if (lang == "VOSTFR") "" else "$lang "
-            seasonName = "$langTitle$name - $animeTitle"
-        }
-
-        anime.title = seasonName
-        anime.description =
-            document.selectFirst("#synopsisText")?.text()
+        anime.title = document.selectFirst("h1")?.text() ?: dbAnime.title
+        anime.description = document.selectFirst("#synopsisText")?.text()
         anime.genres = document.select(".genres-wrap span").map { it.text().trim() }
         anime.thumbnailUrl = document.selectFirst("meta[itemprop=image]")?.attr("content")
         return anime
     }
 
     override fun animeDetailsParse(document: Document): SAnime = throw Exception("Not used")
+
+
+    // ============================== Seasons ===============================
+
+    override fun fetchSeasonsList(anime: Anime): Observable<List<SSeason>> {
+        val root = seriesUrl(anime.url)
+        return client.newCall(GET("$baseUrl$root", headers))
+            .asCancelableObservable()
+            .map { response ->
+                val document = response.asJsoup()
+                val seasonRegex = Regex(
+                    "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
+                    RegexOption.MULTILINE
+                )
+                val scripts =
+                    document.select("h2 + p + div > script, h2 + div > script").toString()
+
+                val panels = seasonRegex.findAll(scripts)
+                    .map { it.destructured.let { (name, url) -> name to url } }
+                    .toList()
+
+                // One probe per (language, season) tagged with a stable ordering key so the
+                // resolved list is grouped by language (VOICES_VALUES order) then by season.
+                val tasks = VOICES_VALUES.flatMapIndexed { langIndex, voice ->
+                    panels.mapIndexed { seasonIndex, panel ->
+                        (langIndex * 1000 + seasonIndex) to Triple(panel.first, panel.second, voice)
+                    }
+                }
+
+                val resolved = tasks.parallelMap { (orderKey, task) ->
+                    val (seasonName, seasonUrl, voice) = task
+                    getLangUrl(root, seasonName, seasonUrl, voice)?.let { orderKey to it }
+                }.filterNotNull().sortedBy { it.first }
+
+                resolved.mapIndexed { index, (_, pair) ->
+                    val (name, langUrlStem) = pair
+                    SSeason.create().apply {
+                        this.name = name
+                        this.url = "$root/$langUrlStem"
+                        this.number = (index + 1).toFloat()
+                    }
+                }
+            }
+    }
 
 
     // ============================== Anime Episodes ===============================
