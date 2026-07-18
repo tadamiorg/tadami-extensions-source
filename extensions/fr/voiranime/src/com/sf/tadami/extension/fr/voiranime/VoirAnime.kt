@@ -10,12 +10,12 @@ import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.voeextractor.VoeExtractor
 import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
 import com.sf.tadami.network.GET
-import com.sf.tadami.network.POST
 import com.sf.tadami.network.asCancelableObservable
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
+import com.sf.tadami.source.model.SAnimeStatus
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
@@ -25,7 +25,7 @@ import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import okhttp3.FormBody
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -130,54 +130,15 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
             .asCancelableObservable()
             .map { response ->
 
-                val html = when {
-                    query.isNotEmpty() -> {
-                        "<div>" + response.body.string().substringAfter("___ASPSTART_HTML___")
-                            .substringBefore("___ASPEND_HTML___") + "</div>"
-                    }
+                val document = response.asJsoup()
 
-                    else -> {
-                        null
-                    }
+                val animeList = if (query.isNotEmpty()) {
+                    document.select("div.c-tabs-item__content").map { searchAnimeFromQueryElement(it) }
+                } else {
+                    document.select("div.page-item-detail.video").map { searchAnimeFromElement(it) }
                 }
 
-                val document = response.asJsoup(html)
-
-                val selector = when {
-                    query.isNotEmpty() -> {
-                        "div.item"
-                    }
-
-                    else -> {
-                        "div.page-item-detail.video"
-                    }
-                }
-
-                val animeList = document.select(selector).map { element ->
-                    when {
-                        query.isNotEmpty() -> {
-                            searchAnimeFromQueryElement(element)
-                        }
-
-                        else -> {
-                            searchAnimeFromElement(element)
-                        }
-                    }
-                }
-
-                val nextPageSelector = when {
-                    query.isNotEmpty() -> {
-                        null
-                    }
-
-                    else -> {
-                        searchAnimeNextPageSelector()
-                    }
-                }
-
-                val hasNextPage = nextPageSelector?.let { nextSelector ->
-                    document.select(nextSelector).first()
-                } != null
+                val hasNextPage = document.select(searchAnimeNextPageSelector()).first() != null
 
                 AnimesPage(animeList, hasNextPage)
             }
@@ -185,10 +146,15 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
 
     private fun searchAnimeFromQueryElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
-        val titleUrl = element.select("h3 > a")
-        anime.title = titleUrl.text()
-        anime.thumbnailUrl = element.select("div.asp_image").attr("data-src")
-        anime.setUrlWithoutDomain(titleUrl.attr("href"))
+        val titleUrl = element.selectFirst("div.post-title h3 a")
+        anime.title = titleUrl?.text().orEmpty()
+        anime.setUrlWithoutDomain(titleUrl?.attr("href").orEmpty())
+        val imgDiv = element.select("div.tab-thumb img")
+        anime.thumbnailUrl = if (imgDiv.hasAttr("srcset")) {
+            imgDiv.attr("srcset").split(",").map { it.trim().split(" ").first() }.last()
+        } else {
+            imgDiv.attr("src")
+        }
         return anime
     }
 
@@ -214,8 +180,6 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         return anime
     }
 
-    private val searchBaseUrl = "wp-admin/admin-ajax.php"
-
     override fun searchAnimeRequest(
         page: Int,
         query: String,
@@ -225,12 +189,14 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
 
         return when {
             query.isNotEmpty() -> {
-                val formData = FormBody.Builder()
-                    .add("aspp", query)
-                    .add("action", "ajaxsearchpro_search")
-                    .add("asid", "4")
-                    .build()
-                POST("$baseUrl/$searchBaseUrl", headers, formData)
+                val url = baseUrl.toHttpUrl().newBuilder().apply {
+                    if (page > 1) addPathSegments("page/$page")
+                    addQueryParameter("s", query)
+                    addQueryParameter("post_type", "wp-manga")
+                    listOf("op", "author", "artist", "release", "adult", "type", "language")
+                        .forEach { addQueryParameter(it, "") }
+                }.build()
+                GET(url.toString(), headers)
             }
 
             else -> {
@@ -246,13 +212,29 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         anime.genres = document.select("div.genres-content a").map { it.text() }
         anime.description = document.selectFirst("div.description-summary p")?.text()
         val rightColumnValues = document.select("div.summary_content div.post-content_item")
-        anime.status = rightColumnValues.find {
-            it.select("div.summary-heading > h5").text().trim().lowercase() == "status"
-        }?.select("div.summary-content")?.text()?.trim()
-        anime.release = rightColumnValues.find {
-            it.select("div.summary-heading > h5").text().trim().lowercase() == "start date"
-        }?.select("div.summary-content")?.text()?.trim()
+
+        fun valueForHeading(vararg headings: String): String? {
+            return rightColumnValues.find { item ->
+                val heading = item.select("div.summary-heading > h5").text().trim().lowercase()
+                headings.any { heading == it }
+            }?.select("div.summary-content")?.text()?.trim()?.takeIf { it.isNotBlank() }
+        }
+
+        anime.status = parseStatus(valueForHeading("status"))
+        anime.release = valueForHeading("start date")
+        anime.studio = valueForHeading("studio", "studios", "studio(s)")
+        anime.author = valueForHeading("author", "authors", "author(s)", "auteur", "auteurs")
         return anime
+    }
+
+    private fun parseStatus(status: String?): SAnimeStatus {
+        return when (status?.lowercase()?.trim()) {
+            "en cours", "ongoing", "en cours de diffusion", "airing", "publishing" -> SAnimeStatus.ONGOING
+            "terminé", "termine", "completed", "complete", "fini" -> SAnimeStatus.COMPLETED
+            "en pause", "on hold", "hiatus", "on hiatus" -> SAnimeStatus.ON_HIATUS
+            "annulé", "annule", "canceled", "cancelled", "abandonné", "abandonne", "dropped" -> SAnimeStatus.CANCELLED
+            else -> SAnimeStatus.UNKNOWN
+        }
     }
 
     override fun episodesListParse(response: Response): List<SEpisode> {

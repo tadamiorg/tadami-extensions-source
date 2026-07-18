@@ -23,6 +23,7 @@ import com.sf.tadami.network.shortTimeOutBuilder
 import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
+import com.sf.tadami.source.model.SAnimeStatus
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
@@ -333,10 +334,34 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         }
 
         anime.title = seasonName
+        // Keep the untouched anime name for search & migration (title is rewritten with the season).
+        anime.rawTitle = animeTitle
         anime.description =
             document.selectFirst("#synopsisText")?.text()
         anime.genres = document.select(".genres-wrap span").map { it.text().trim() }
         anime.thumbnailUrl = document.selectFirst("meta[itemprop=image]")?.attr("content")
+
+        val statusText = document.select(".info-lbl:contains(État) + .info-val")
+            .firstOrNull()?.text() ?: ""
+
+        anime.status = when {
+            statusText.contains("En cours", true) -> SAnimeStatus.ONGOING
+            statusText.contains("Terminé", true) -> SAnimeStatus.COMPLETED
+            else -> SAnimeStatus.UNKNOWN
+        }
+
+        val releaseText = document.select(".info-lbl:contains(Année) + .info-val").firstOrNull()?.text() ?: ""
+
+        anime.release = releaseText
+
+        val authorText = document.select(".info-lbl:contains(Créateur) + .info-val").firstOrNull()?.text() ?: ""
+
+        anime.author = authorText
+
+        val studioText = document.select("span#studioText").firstOrNull()?.text() ?: ""
+
+        anime.studio = studioText
+
         return anime
     }
 
