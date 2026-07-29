@@ -22,9 +22,10 @@ class VidmolyExtractor(private val client: OkHttpClient, private val headers: He
         return "$scheme://$host$portPart"
     }
 
-    fun videosFromUrl(url: String): List<StreamSource> {
+    fun videosFromUrl(url: String, server: String = "Vidmoly"): List<StreamSource> {
+        val origin = url.toHttpUrl().origin()
         val actualHeaders = headers.newBuilder()
-            .add("Referer", url.toHttpUrl().origin())
+            .add("Referer", origin)
             .build()
 
         val body = client.newCall(GET(url, actualHeaders)).execute().body.string()
@@ -60,20 +61,15 @@ class VidmolyExtractor(private val client: OkHttpClient, private val headers: He
 
         return playlistUtils.extractFromHls(
             playlistUrl = masterUrl,
-            referer = url,
+            referer = "$origin/",
             videoNameGen = {
-                val hasQuality = it.isNotBlank()
-                var quality = ""
-                if (hasQuality) {
-                    quality = "- $it"
-                }
-                "Vidmoly $quality"
+                if (it.isNotBlank()) "$server - $it" else server
             },
             videoHeadersGen = { _, referer, _ ->
                 playlistUtils.generateMasterHeaders(headers, referer)
             }
         ).map {
-            it.copy(server = "Vidmoly")
+            it.copy(server = server)
         }
     }
 }

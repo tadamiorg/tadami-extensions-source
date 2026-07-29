@@ -27,7 +27,8 @@ data class AnimeSamaPreferences(
             "vk" to "Vk",
             "oneupload" to "OneUpload",
             "yourupload" to "YourUpload",
-
+            "uqload" to "Uqload",
+            "ansembed" to "AnsEmbed",
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE =

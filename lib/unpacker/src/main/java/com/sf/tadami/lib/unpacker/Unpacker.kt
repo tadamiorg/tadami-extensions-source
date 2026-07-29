@@ -33,8 +33,10 @@ object Unpacker {
      * Note: single quotes `\'` in the data will be replaced with double quotes `"`.
      */
     fun unpack(script: SubstringExtractor, left: String? = null, right: String? = null): String {
+        // Lenient tail: matches both the standard "}('…'.split('|'),0,{}))" and
+        // simplified packer variants ending in "}('…'.split('|')))".
         val packed = script
-            .substringBetween("}('", ".split('|'),0,{}))")
+            .substringBetween("}('", ".split('|')")
             .replace("\\'", "\"")
 
         val parser = SubstringExtractor(packed)
@@ -47,18 +49,28 @@ object Unpacker {
         }
         if (data.isEmpty()) return ""
 
+        val radix = parser.substringBefore(",").trim().toIntOrNull() ?: 62
+
         val dictionary = parser.substringBetween("'", "'").split("|")
         val size = dictionary.size
 
         return wordRegex.replace(data) {
             val key = it.value
-            val index = parseRadix62(key)
+            val index = parseRadix(key, radix) ?: return@replace key
             if (index >= size) return@replace key
             dictionary[index].ifEmpty { key }
         }
     }
 
     private val wordRegex by lazy { Regex("""\w+""") }
+
+    private fun parseRadix(str: String, radix: Int): Int? {
+        if (radix >= 37) return parseRadix62(str)
+        // Packers with radix <= 36 encode tokens with c.toString(radix), which is
+        // lowercase and matched case-sensitively; uppercase words are never tokens.
+        if (str.any { it !in '0'..'9' && it !in 'a'..'z' }) return null
+        return str.toIntOrNull(radix)
+    }
 
     private fun parseRadix62(str: String): Int {
         var result = 0

@@ -1,3 +1,4 @@
+
 package com.sf.tadami.extension.fr.animesama
 
 import android.text.Html
@@ -11,6 +12,7 @@ import com.sf.tadami.lib.lpayerextractor.LpayerExtractor
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
 import com.sf.tadami.lib.smoothpreextractor.SmoothPreExtractor
+import com.sf.tadami.lib.uqloadextractor.UqloadExtractor
 import com.sf.tadami.lib.vidhide.VidHideExtractor
 import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
@@ -112,15 +114,25 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 return false
             }
 
-            if (oldVersion < 23) {
+            if (oldVersion < 28) {
                 val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
 
-                if (!streamOrder.contains("lpayer")) {
-                    streamOrder.add("lpayer")
+                if (oldVersion < 23) {
+                    if (!streamOrder.contains("lpayer")) {
+                        streamOrder.add("lpayer")
+                    }
+
+                    if (!streamOrder.contains("callistanise")) {
+                        streamOrder.add("callistanise")
+                    }
                 }
 
-                if (!streamOrder.contains("callistanise")) {
-                    streamOrder.add("callistanise")
+                if (!streamOrder.contains("uqload")) {
+                    streamOrder.add("uqload")
+                }
+
+                if (!streamOrder.contains("ansembed")) {
+                    streamOrder.add("ansembed")
                 }
 
                 dataStore.editPreference(
@@ -556,6 +568,14 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
                         listOf("oneupload.to", "oneupload").any { streamUrl.contains(it) } -> {
                             OneUploadExtractor(newClient, headers).videosFromUrl(streamUrl)
+                        }
+
+                        listOf("uqload").any { streamUrl.contains(it) } -> {
+                            UqloadExtractor(newClient).videosFromUrl(streamUrl)
+                        }
+
+                        listOf("ansembed").any { streamUrl.contains(it) } -> {
+                            VidmolyExtractor(newClient, headers).videosFromUrl(streamUrl, server = "AnsEmbed")
                         }
 
                         listOf("Smoothpre.com").any { streamUrl.contains(it) } -> {
