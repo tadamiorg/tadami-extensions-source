@@ -24,6 +24,16 @@ fun getAnimeSamaPreferencesContent(
                             true
                         }
                     ),
+                    SourcePreference.PreferenceItem.EditTextPreference(
+                        value = AnimeSamaPreferences.DEFAULT_USER_AGENT,
+                        key = AnimeSamaPreferences.USER_AGENT,
+                        title = i18n.getString("sources_preferences_user_agent"),
+                        subtitle = i18n.getString("sources_preferences_user_agent_subtitle"),
+                        defaultValue = AnimeSamaPreferences.DEFAULT_USER_AGENT,
+                        onValueChanged = {
+                            true
+                        }
+                    ),
                 )
             ),
             SourcePreference.PreferenceCategory(

@@ -1,4 +1,3 @@
-
 package com.sf.tadami.extension.fr.animesama
 
 import android.text.Html
@@ -34,6 +33,7 @@ import com.sf.tadami.ui.utils.parallelMap
 import com.sf.tadami.utils.Lang
 import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -60,6 +60,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     override val client: OkHttpClient = network.cloudflareClient
 
+    override fun headersBuilder() = super.headersBuilder()
+        .set("User-Agent", preferences.userAgent)
+
     private var episodeNumber: Int? = null
 
     private val VOICES_VALUES = listOf("vostfr", "vf", "vj", "va")
@@ -67,23 +70,22 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     private val i18n = i18n(AnimeSamaTranslations)
 
     private fun getMainUrl() {
-        runBlocking {
-            launch(Dispatchers.IO){
-                try{
-                    val mainUrl = client.newCall(Request.Builder().url(baseUrl).build()).execute().use { response ->
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val mainUrl = client.newCall(Request.Builder().url(baseUrl).build()).execute()
+                    .use { response ->
                         val finalUrl = response.request.url
                         "${finalUrl.scheme}://${finalUrl.host}"
                     }
 
-                    if(mainUrl == baseUrl) return@launch
+                if (mainUrl == baseUrl) return@launch
 
-                    dataStore.editPreference(
-                        mainUrl,
-                        stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
-                    )
-                } catch(e: Exception){
-                    Log.e("AnimeSama", "Error getting main url", e)
-                }
+                dataStore.editPreference(
+                    mainUrl,
+                    stringPreferencesKey(AnimeSamaPreferences.BASE_URL.name)
+                )
+            } catch (e: Exception) {
+                Log.e("AnimeSama", "Error getting main url", e)
             }
         }
     }
@@ -362,11 +364,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             else -> SAnimeStatus.UNKNOWN
         }
 
-        val releaseText = document.select(".info-lbl:contains(Année) + .info-val").firstOrNull()?.text() ?: ""
+        val releaseText =
+            document.select(".info-lbl:contains(Année) + .info-val").firstOrNull()?.text() ?: ""
 
         anime.release = releaseText
 
-        val authorText = document.select(".info-lbl:contains(Créateur) + .info-val").firstOrNull()?.text() ?: ""
+        val authorText =
+            document.select(".info-lbl:contains(Créateur) + .info-val").firstOrNull()?.text() ?: ""
 
         anime.author = authorText
 
@@ -575,7 +579,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                         }
 
                         listOf("ansembed").any { streamUrl.contains(it) } -> {
-                            VidmolyExtractor(newClient, headers).videosFromUrl(streamUrl, server = "AnsEmbed")
+                            VidmolyExtractor(newClient, headers).videosFromUrl(
+                                streamUrl,
+                                server = "AnsEmbed"
+                            )
                         }
 
                         listOf("Smoothpre.com").any { streamUrl.contains(it) } -> {
@@ -611,7 +618,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                             VidHideExtractor(
                                 newClient,
                                 baseUrl = streamUrl.toHttpUrl().origin()
-                            ).videosFromUrl(streamUrl,"Callistanise","Callistanise")
+                            ).videosFromUrl(streamUrl, "Callistanise", "Callistanise")
                         }
 
                         else -> null
@@ -666,7 +673,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             }
     }
 
-   private fun HttpUrl.origin(): String {
+    private fun HttpUrl.origin(): String {
         val portPart = if ((scheme == "https" && port == 443) || (scheme == "http" && port == 80)) {
             ""
         } else {

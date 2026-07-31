@@ -20,6 +20,14 @@ val AnimeSamaTranslations : Translations = mapOf(
         Language.en to "If you want to modify the source base address in case it is not working already.",
         Language.fr to "Si vous souhaitez modifier l\'adresse de base de la source si celle-ci ne fonctionne plus."
     ),
+    "sources_preferences_user_agent" to mapOf(
+        Language.en to "Override the user agent",
+        Language.fr to "Remplacer le user agent de base"
+    ),
+    "sources_preferences_user_agent_subtitle" to mapOf(
+        Language.en to "If you want to modify the source user agent in case it is not working already.",
+        Language.fr to "Si vous souhaitez modifier le user agent de base de la source si celle-ci ne fonctionne plus."
+    ),
     "sources_preferences_players_order" to mapOf(
         Language.en to "Server priority",
         Language.fr to "Priorité des serveurs"
