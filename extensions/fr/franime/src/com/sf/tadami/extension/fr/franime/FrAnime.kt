@@ -4,15 +4,23 @@ import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.sf.tadami.domain.anime.Anime
 import com.sf.tadami.extension.fr.franime.dto.CustomAnime
-import com.sf.tadami.extension.fr.franime.interceptors.WebViewResolver
 import com.sf.tadami.lib.filemoonextractor.FileMoonExtractor
 import com.sf.tadami.lib.i18n.i18n
+import com.sf.tadami.lib.lpayerextractor.LpayerExtractor
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
+import com.sf.tadami.lib.smoothpreextractor.SmoothPreExtractor
+import com.sf.tadami.lib.uqloadextractor.UqloadExtractor
+import com.sf.tadami.lib.vidhide.VidHideExtractor
+import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
+import com.sf.tadami.lib.vkextractor.VkExtractor
+import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
 import com.sf.tadami.network.GET
+import com.sf.tadami.network.shortTimeOutBuilder
 import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
+import com.sf.tadami.source.model.SAnimeStatus
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
@@ -26,13 +34,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.injectLazy
+import java.util.Base64
 
 @Suppress("UNUSED")
 class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
@@ -52,9 +63,12 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
 
     override val supportEpisodeTooltip: Boolean = true
 
-    override fun headersBuilder() = super.headersBuilder()
-        .set("Referer", "$baseUrl/")
-        .set("User-Agent", preferences.userAgent)
+    override fun headersBuilder() = super.headersBuilder().apply {
+        set("Referer", "$baseUrl/")
+        // Without an override, the app's user agent (already set) matches its WebView, which a
+        // Cloudflare clearance is bound to
+        FrAnimePreferences.userAgentOverride(preferences.userAgent)?.let { set("User-Agent", it) }
+    }
 
     private val json: Json by injectLazy()
     private val baseApiUrl = "https://api.${baseUrl.toHttpUrl().host}/api"
@@ -71,26 +85,28 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
 
 
     // ============================== Preferences ===============================
+    /** Returns true when an update was migrated (not on a fresh install or an unchanged version). */
     private suspend fun preferencesMigrations(): Boolean {
-        val oldVersion = preferences.lastVersionCode
-        if (oldVersion < BuildConfig.VERSION_CODE) {
-            dataStore.editPreference(
-                BuildConfig.VERSION_CODE,
-                intPreferencesKey(FrAnimePreferences.LAST_VERSION_CODE.name)
-            )
+        // Read the store itself: on older apps `preferences` still holds the defaults this early
+        val oldVersion = dataStore.data.first()[FrAnimePreferences.LAST_VERSION_CODE] ?: 0
+        if (oldVersion >= BuildConfig.VERSION_CODE) return false
 
-            // Fresh install
-            if (oldVersion == 0) {
-                dataStore.editPreferences(
-                    dataStore.data.map { prefs ->
-                        FrAnimePreferences.transform(prefs)
-                    }.first(),
-                    FrAnimePreferences
-                )
-                return false
-            }
-        }
-        return true
+        dataStore.editPreference(
+            BuildConfig.VERSION_CODE,
+            intPreferencesKey(FrAnimePreferences.LAST_VERSION_CODE.name)
+        )
+
+        // Writes the defaults on a fresh install. On updates, transform() also brings the
+        // stored server order up to date (servers added in v2, Hdvid removed)
+        dataStore.editPreferences(
+            dataStore.data.map { prefs ->
+                FrAnimePreferences.transform(prefs)
+            }.first(),
+            FrAnimePreferences
+        )
+
+        // Fresh install: nothing was migrated
+        return oldVersion != 0
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -237,36 +253,131 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
         val players =
             if (episodeLang == "vo") episodeData.languages.vo.players else episodeData.languages.vf.players
 
-        val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
-        val sibnetExtractor by lazy { SibnetExtractor(client) }
-        val fileMoonExtractor by lazy { FileMoonExtractor(client) }
-        val streamSourcesList = mutableListOf<StreamSource>()
-        val webViewResolver = WebViewResolver(headers)
-        val sameSourceCount = mutableMapOf<String,Int>()
+        // "#n" suffix of each player among the players giving the same server, computed up front
+        // since the players are resolved in parallel. It keeps mirrors apart (casting identifies a
+        // source by its name)
+        val servers = players.map { serverOf(it.lowercase()) }
+        val sameSourceCount = servers.mapIndexed { index, server -> servers.take(index + 1).count { it == server } }
 
-        streamSourcesList.addAll(
-            players.withIndex().parallelMap { (index, playerName) ->
+        val streamSources = players.withIndex()
+            // Hosts without an extractor are skipped before calling the (rate limited) API
+            .filter { (_, playerName) -> playerName.lowercase() in SUPPORTED_PLAYERS }
+            .parallelMap { (index, playerName) ->
                 runCatching {
-                    sameSourceCount[playerName] = sameSourceCount.getOrDefault(playerName, 0) + 1
-                    val apiUrl = "$videoBaseUrl/$episodeLang/$index"
-                    val frAnimePlayerUrl = client.newCall(GET(apiUrl, headers)).execute().body.string()
-                    when (playerName) {
-                        "sendvid" -> sendvidExtractor.videosFromUrl(url = webViewResolver.getPlayerUrl(frAnimePlayerUrl),suffix = "#${sameSourceCount[playerName]}")
-                        "sibnet" -> sibnetExtractor.videosFromUrl(url = webViewResolver.getPlayerUrl(frAnimePlayerUrl), suffix = "#${sameSourceCount[playerName]}")
-                        "filemoon" -> fileMoonExtractor.videosFromUrl(url = webViewResolver.getPlayerUrl(frAnimePlayerUrl), headers = headers)
-                        "hd" -> listOf(StreamSource(url = frAnimePlayerUrl, fullName = "Hdvid #${sameSourceCount[playerName]}", server = "Hdvid", headers = headers))
-                        else -> emptyList()
+                    val watchUrl = fetchWatchUrl("$videoBaseUrl/$episodeLang/$index")
+                        ?: return@runCatching null
+                    val playerUrl = decodePlayerUrl(watchUrl) ?: run {
+                        Log.w("FrAnime", "Could not decode the $playerName player of $watchUrl")
+                        return@runCatching null
                     }
+                    videosFromPlayer(playerName.lowercase(), playerUrl)
+                        .map { it.copy(fullName = "${it.fullName.trim()} #${sameSourceCount[index]}") }
+                        .also { Log.d("FrAnime", "The $playerName player $playerUrl gave ${it.size} stream(s)") }
+                }.onFailure {
+                    Log.w("FrAnime", "The $playerName player failed: ${it.message}")
                 }.getOrNull()
-            }.filterNotNull().flatten()
+            }
+            .filterNotNull()
+            .flatten()
 
-        )
+        return Observable.just(streamSources.sort())
+    }
 
-        return Observable.just(streamSourcesList)
+    override fun List<StreamSource>.sort(): List<StreamSource> {
+        val order = preferences.playerStreamsOrder.split(",")
+        return sortedBy { source ->
+            order.indexOf(source.server.lowercase()).takeIf { it >= 0 } ?: Int.MAX_VALUE
+        }
+    }
+
+    private val extractorClient by lazy { client.shortTimeOutBuilder(15) }
+
+    /** Players served by the same extractor, which names their streams the same way. */
+    private fun serverOf(playerName: String): String {
+        return when (playerName) {
+            "vkru" -> "vk"
+            "movearnpre", "minochinos", "dingtezuni" -> "vidhide"
+            else -> playerName
+        }
+    }
+
+    private fun videosFromPlayer(playerName: String, url: String): List<StreamSource> {
+        return when (playerName) {
+            "sibnet" -> SibnetExtractor(extractorClient).videosFromUrl(url = url)
+            "sendvid" -> SendvidExtractor(extractorClient, headers).videosFromUrl(url = url)
+            "vidmoly" -> VidmolyExtractor(extractorClient, headers).videosFromUrl(url.replace("vidmoly.to", "vidmoly.net"))
+            "filemoon" -> FileMoonExtractor(extractorClient).videosFromUrl(url = url, headers = headers)
+            "uqload" -> UqloadExtractor(extractorClient).videosFromUrl(url)
+            "vk", "vkru" -> VkExtractor(extractorClient, headers).videosFromUrl(url)
+            "lpayer" -> LpayerExtractor(extractorClient).videosFromUrl(url)
+            "smoothpre" -> SmoothPreExtractor(extractorClient).videosFromUrl(url)
+            "yourupload" -> YourUploadExtractor(extractorClient).videosFromUrl(url, headers)
+            "movearnpre" -> VidHideExtractor(extractorClient, MOVEARNPRE_BASE_URL).videosFromUrl(url)
+            "minochinos", "dingtezuni" -> VidHideExtractor(extractorClient, url.toHttpUrl().origin()).videosFromUrl(url)
+            else -> emptyList()
+        }
+    }
+
+    /** The player API answers with a watch page URL, retrying once when it is rate limited. */
+    private fun fetchWatchUrl(apiUrl: String): String? {
+        repeat(2) { attempt ->
+            client.newCall(GET(apiUrl, headers)).execute().use { response ->
+                if (response.isSuccessful) return response.body.string().trim()
+                if (response.code != 429) {
+                    Log.w("FrAnime", "The player API answered ${response.code} for $apiUrl")
+                    return null
+                }
+            }
+            if (attempt == 0) Thread.sleep(RATE_LIMIT_RETRY_DELAY_MS)
+        }
+        Log.w("FrAnime", "The player API is still rate limited for $apiUrl")
+        return null
+    }
+
+    /**
+     * The watch page only embeds the host's player, but it sits behind a Cloudflare challenge. The
+     * player URL travels in one of its query parameters (the others are decoys) as
+     * base64(hex(url xor key)), so it is decoded here instead of loading the page in a WebView.
+     */
+    private fun decodePlayerUrl(watchUrl: String): String? {
+        val url = watchUrl.toHttpUrlOrNull() ?: return null
+        return url.queryParameterNames.firstNotNullOfOrNull { name ->
+            url.queryParameter(name)?.let(::decodeObfuscatedUrl)
+        }
+    }
+
+    private fun decodeObfuscatedUrl(value: String): String? {
+        val unpadded = value.trimEnd('=')
+        val hex = runCatching {
+            String(Base64.getDecoder().decode(unpadded + "=".repeat((4 - unpadded.length % 4) % 4)), Charsets.US_ASCII)
+        }.getOrNull() ?: return null
+        if (hex.length < 16 || hex.length % 2 != 0) return null
+        val bytes = hex.chunked(2).map { it.toIntOrNull(16) ?: return null }
+        // Every player URL starts with "http", which gives the single byte key away
+        val key = bytes.first() xor 'h'.code
+        val decoded = buildString { bytes.forEach { append((it xor key).toChar()) } }
+        return decoded.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            ?.takeIf { it.all { char -> char.code in 0x21..0x7E } }
+    }
+
+    private fun HttpUrl.origin(): String {
+        val defaultPort = (scheme == "https" && port == 443) || (scheme == "http" && port == 80)
+        return "$scheme://$host" + if (defaultPort) "" else ":$port"
     }
 
     override fun getEpisodeUrl(episode: SEpisode): String {
         return baseUrl + episode.url
+    }
+
+    private fun parseStatus(status: String): SAnimeStatus {
+        val normalized = status.lowercase()
+        return when {
+            "cours" in normalized || "ongoing" in normalized -> SAnimeStatus.ONGOING
+            "termin" in normalized || "fini" in normalized || "complet" in normalized -> SAnimeStatus.COMPLETED
+            "pause" in normalized || "hiatus" in normalized -> SAnimeStatus.ON_HIATUS
+            "annul" in normalized || "cancel" in normalized -> SAnimeStatus.CANCELLED
+            else -> SAnimeStatus.UNKNOWN
+        }
     }
 
     // ============================= Utilities ==============================
@@ -296,10 +407,12 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
 
                 languages.map { lang ->
                     SAnime.create().apply {
-                        title = seasonTitle + if (lang.third) " (${lang.first})" else ""
+                        title = seasonTitle
+                        // Shown by the app as a badge, so it stays visible however long the title is
+                        language = lang.first
                         thumbnailUrl = anime.poster
                         genres = anime.genres
-                        status = anime.status
+                        status = parseStatus(anime.status)
                         description = anime.description
                         setUrlWithoutDomain("/anime/${titleToUrl(anime.originalTitle)}?lang=${lang.second}&s=${index + 1}")
                         initialized = true
@@ -307,5 +420,15 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
                 }
             }
         }
+    }
+
+    companion object {
+        /** FrAnime player names (lowercased) that [videosFromPlayer] can extract. */
+        private val SUPPORTED_PLAYERS = setOf(
+            "sibnet", "sendvid", "vidmoly", "filemoon", "uqload", "vk", "vkru", "lpayer",
+            "smoothpre", "yourupload", "movearnpre", "minochinos", "dingtezuni",
+        )
+        private const val MOVEARNPRE_BASE_URL = "https://HI3THh5OxxWw.ovaltinecdn.com"
+        private const val RATE_LIMIT_RETRY_DELAY_MS = 1500L
     }
 }

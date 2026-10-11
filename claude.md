@@ -896,18 +896,69 @@ val request = POST("$baseUrl/search", headers, formBody)
 
 **Handle Cloudflare protection:**
 
+`network.client` (and its alias `network.cloudflareClient`) already solves Cloudflare challenges:
+on a challenge it opens a headless WebView with the request's User-Agent, waits for
+`cf_clearance` and replays the request. Concurrent requests to the same site share one solve,
+and a failed solve fails the next requests fast for a minute instead of opening a WebView each.
+When the challenge is interactive the request fails with a `CloudflareChallengeException`, and the
+app offers the user to solve it in its WebView. Use `network.nonCloudflareClient` only for hosts
+where a WebView can never help (e.g. image/CDN hosts).
+
 ```kotlin
-override val client = network.cloudflareClient
+override val client = network.client
 ```
 
 **Custom headers:**
 
+Don't set a User-Agent unless the site really needs a specific one: `super.headersBuilder()`
+already adds the app's, Chrome for Android's user agent with the device's WebView version.
+Cloudflare binds `cf_clearance` to the exact User-Agent that solved the challenge, so whatever you
+set must be used for every request of the source (the WebView uses the request's User-Agent too).
+Never use a desktop User-Agent on a Cloudflare-protected site: the browser engine is Android's, so
+the challenge keeps coming back in the WebView even once solved.
+
 ```kotlin
-override val headers = Headers.Builder()
-    .add("Referer", baseUrl)
-    .add("User-Agent", "Mozilla/5.0...")
-    .build()
+override fun headersBuilder() = super.headersBuilder()
+    .add("Referer", "$baseUrl/")
 ```
+
+**Pages that need JavaScript (`network.webViewResolver`, extensions-lib 1.6):**
+
+For content that only exists after scripts ran (iframes added by JS, links computed at runtime,
+requests fired by an embedded player), use the app's headless WebView instead of writing your own.
+Look at what the script reads first: it is often data already in the response. FrAnime's player
+pages, for instance, only decode the embed URL from their own query string, so the extension
+decodes it itself and never loads them (they sit behind an interactive Cloudflare challenge).
+It shares the app's cookies and User-Agent, waits through Cloudflare challenges, cleans up after
+itself, and is blocking (call it from a background thread, e.g. inside `parallelMap`).
+
+```kotlin
+// Wait for an iframe built by JavaScript (the script may return a Promise)
+val playerUrl = network.webViewResolver.load(
+    url = pageUrl,
+    headers = headers,
+    script = """
+        new Promise(resolve => {
+          const tick = () => {
+            const frame = document.querySelector('iframe[src]');
+            frame ? resolve(frame.src) : setTimeout(tick, 250);
+          };
+          tick();
+        })
+    """.trimIndent(),
+).scriptResult
+
+// Or capture a request the page makes, e.g. the player's playlist
+val m3u8 = network.webViewResolver.load(
+    url = embedUrl,
+    headers = headers,
+    interceptRequest = { it.contains(".m3u8") },
+).interceptedUrl
+```
+
+`Result` also exposes the final `html`, the last `url` and `timedOut`. An extension using it must
+declare `set("apiVersion","1.6")` in its `build.gradle.kts` extras: older apps (lib <= 1.5) don't
+have it and will not offer the extension.
 
 ### 2. Error Handling
 
@@ -1161,9 +1212,10 @@ extensions/{lang}/{source-name}/build/outputs/apk/debug/{source-name}-debug.apk
 - Check if site uses dynamic content (JavaScript)
 
 **2. Cloudflare blocking requests:**
-```kotlin
-override val client = network.cloudflareClient
-```
+- Use `network.client` (it solves non-interactive challenges itself)
+- Don't hardcode an outdated User-Agent: let the app's one through (see Best Practices)
+- Interactive challenges: open the source in the app's WebView, solve it, go back
+- Challenge coming back right after being solved: the source sets a desktop User-Agent, remove it
 
 **3. Video extraction failing:**
 - Check if video host changed their embed structure

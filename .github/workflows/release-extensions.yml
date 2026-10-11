@@ -1,0 +1,126 @@
+# Builds the chosen extensions and publishes them to the extensions repo (tadamiorg/tadami-extensions):
+# APK, icon and index entry of each, the other extensions are left untouched.
+#
+# Run it from the Actions tab ("Run workflow") with the extensions to release, e.g. "en.animepahe fr.franime".
+# Bump extVersionCode first: a version code that isn't above the published one is refused.
+#
+# Secrets (Settings > Secrets and variables > Actions):
+#   EXTENSIONS_KEYSTORE_BASE64     the keystore signing the published extensions, base64-encoded (KEY_FILE in .env)
+#   EXTENSIONS_KEY_STORE_PASSWORD  its password (KEY_STORE_PASSWORD in .env), also used for the key
+#   EXTENSIONS_KEY_ALIAS           the key alias (ALIAS in .env)
+#   EXTENSIONS_REPO_TOKEN          fine-grained token with "Contents: Read and write" on tadamiorg/tadami-extensions
+name: Release extensions
+
+on:
+  workflow_dispatch:
+    inputs:
+      extensions:
+        description: 'Extensions to release, as <lang>.<name> separated by spaces or commas (e.g. "en.animepahe fr.franime")'
+        required: true
+        type: string
+      dry_run:
+        description: Build and check everything, but don't push to the extensions repo
+        type: boolean
+        default: false
+
+# Two releases at once would race on the index
+concurrency:
+  group: release-extensions
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Through the environment rather than interpolated in scripts: it is user input
+      CI_EXTENSIONS: ${{ inputs.extensions }}
+    steps:
+      - name: Check out the extensions source
+        uses: actions/checkout@v4
+
+      - name: Check the requested extensions
+        id: extensions
+        run: echo "tasks=$(python3 .github/scripts/publish_extensions.py tasks --extensions "$CI_EXTENSIONS")" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.EXTENSIONS_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The EXTENSIONS_KEYSTORE_BASE64 secret is missing"
+            exit 1
+          fi
+          # Line breaks or spaces pasted with the value would break the decoding
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/extensions.jks"
+          echo "KEY_FILE=$RUNNER_TEMP/extensions.jks" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.EXTENSIONS_KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.EXTENSIONS_KEY_ALIAS }}
+          TASKS: ${{ steps.extensions.outputs.tasks }}
+        # settings.gradle.kts only loads the extensions listed in CI_EXTENSIONS. gradlew isn't executable in git.
+        run: |
+          chmod +x ./gradlew
+          ./gradlew $TASKS --console=plain
+
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: extensions
+          path: extensions/*/*/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Check out the extensions repo
+        uses: actions/checkout@v4
+        with:
+          repository: tadamiorg/tadami-extensions
+          # Reading works without it (public repo), pushing needs it
+          token: ${{ secrets.EXTENSIONS_REPO_TOKEN || github.token }}
+          path: extensions-repo
+
+      - name: Add the extensions to the repo
+        run: |
+          build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          python3 .github/scripts/publish_extensions.py publish \
+            --extensions "$CI_EXTENSIONS" \
+            --repo extensions-repo \
+            --aapt2 "$build_tools/aapt2" \
+            --apksigner "$build_tools/apksigner" \
+            --dexdump "$build_tools/dexdump" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --commit-message "$RUNNER_TEMP/commit-message.txt"
+          git -C extensions-repo status --short
+
+      - name: Push to the extensions repo
+        if: ${{ !inputs.dry_run }}
+        working-directory: extensions-repo
+        env:
+          HAS_TOKEN: ${{ secrets.EXTENSIONS_REPO_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::The EXTENSIONS_REPO_TOKEN secret is missing, nothing was pushed"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed in the extensions repo"
+            exit 0
+          fi
+          git commit --file "$RUNNER_TEMP/commit-message.txt"
+          git push

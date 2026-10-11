@@ -36,6 +36,14 @@ val AnimePaheTranslations : Translations = mapOf(
         Language.en to "Enable this if you are having cloudflare issues",
         Language.fr to "Activez ce paramètre si vous rencontrez des problèmes avec Cloudflare"
     ),
+    "anime_session_not_found" to mapOf(
+        Language.en to "Could not find this anime on AnimePahe anymore. If it was renamed, search for it again",
+        Language.fr to "Impossible de retrouver cet anime sur AnimePahe. S'il a été renommé, recherchez-le à nouveau"
+    ),
+    "search_rate_limited" to mapOf(
+        Language.en to "AnimePahe is limiting requests, wait a minute and try again",
+        Language.fr to "AnimePahe limite les requêtes, attendez une minute et réessayez"
+    ),
     "search_animes_blank_error_message" to mapOf(
         Language.en to "Search should not be blank for AnimePahe",
         Language.fr to "La recherche ne doit pas être vide pour AnimePahe"

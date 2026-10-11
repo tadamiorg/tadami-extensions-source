@@ -15,6 +15,7 @@ import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.AnimesPage
 import com.sf.tadami.source.model.AnimeFilterList
 import com.sf.tadami.source.model.SAnime
+import com.sf.tadami.source.model.SAnimeStatus
 import com.sf.tadami.source.model.SEpisode
 import com.sf.tadami.source.model.StreamSource
 import com.sf.tadami.source.online.ConfigurableParsedHttpAnimeSource
@@ -26,12 +27,16 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -74,6 +79,7 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         return getAnimePahePreferencesContent(i18n)
     }
 
+    /** Returns true when an update was migrated (not on a fresh install or an unchanged version). */
     private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
@@ -86,8 +92,9 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
             if (oldVersion == 0) {
                 return false
             }
+            return true
         }
-        return true
+        return false
     }
 
     // Latest
@@ -110,6 +117,7 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
                 title = anime.title
                 thumbnailUrl = anime.snapshot
                 val animeId = anime.id
+                rememberSession(animeId, anime.session)
                 setUrlWithoutDomain("/anime/?anime_id=$animeId")
             }
         }
@@ -144,6 +152,7 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
                 title = anime.title
                 thumbnailUrl = anime.poster
                 val animeId = anime.id
+                rememberSession(animeId, anime.session)
                 setUrlWithoutDomain("/anime/?anime_id=$animeId")
             }
         }
@@ -155,23 +164,30 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
     override fun animeDetailsParse(document: Document): SAnime = throw Exception("Not used !")
 
     override fun animeDetailsRequest(anime: Anime): Request {
-        val animeId = anime.getId()
         // We're using coroutines here to run it inside another thread and
         // prevent android.os.NetworkOnMainThreadException when trying to open
         // webview or share it.
         val session = runBlocking {
             withContext(Dispatchers.IO) {
-                fetchSession(animeId)
+                fetchSession(anime)
             }
         }
         return GET("$baseUrl/anime/$session")
+    }
+
+    private fun parseStatus(status: String?): SAnimeStatus {
+        return when (status?.trim()?.lowercase()) {
+            "currently airing" -> SAnimeStatus.ONGOING
+            "finished airing" -> SAnimeStatus.COMPLETED
+            else -> SAnimeStatus.UNKNOWN
+        }
     }
 
     override fun animeDetailsParse(response: Response): SAnime {
         val document = response.asJsoup()
         return SAnime.create().apply {
             title = document.selectFirst("div.title-wrapper > h1 > span")!!.text()
-            status = document.selectFirst("div.col-sm-4.anime-info p:contains(Status:) a")!!.text()
+            status = parseStatus(document.selectFirst("div.col-sm-4.anime-info p:contains(Status:) a")?.text())
             thumbnailUrl = document.selectFirst("div.anime-poster a")!!.attr("href")
             genres = document.select("div.anime-genre ul li").map { it.text() }
             val synonyms = document.selectFirst("div.col-sm-4.anime-info p:contains(Synonyms:)")
@@ -188,7 +204,7 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used !")
 
     override fun episodesListRequest(anime: Anime): Request {
-        val session = fetchSession(anime.getId())
+        val session = fetchSession(anime)
         return GET("$baseUrl/api?m=release&id=$session&sort=episode_desc&page=1")
     }
 
@@ -247,35 +263,46 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
 
     override fun episodeSourcesParse(response: Response): List<StreamSource> {
         val document = response.asJsoup()
+        // Kwik's firewall only lets through pages embedded by the site: the referer must be the
+        // origin the episode page was served from (after redirects), trailing slash included
+        val referer = response.request.url.origin()
         val downloadLinks = document.select("div#pickDownload > a")
-        return document.select("div#resolutionMenu > button").mapIndexed { index, btn ->
+        val buttons = document.select("div#resolutionMenu > button")
+        var error: Throwable? = null
+        val sources = buttons.mapIndexedNotNull { index, btn ->
             val kwikLink = btn.attr("data-src")
             val quality = btn.text()
-            val paheWinLink = downloadLinks[index].attr("href")
-            getVideo(paheWinLink, kwikLink, quality)
+            val paheWinLink = downloadLinks.getOrNull(index)?.attr("href").orEmpty()
+            // One quality failing must not hide the others
+            runCatching { getVideo(paheWinLink, kwikLink, quality, referer) }
+                .onFailure {
+                    Log.e("AnimePahe", "Could not extract the $quality stream", it)
+                    error = error ?: it
+                }
+                .getOrNull()
         }
+        error?.let { if (sources.isEmpty()) throw it }
+        return sources
     }
 
-    private fun getVideo(paheUrl: String, kwikUrl: String, quality: String): StreamSource {
-        return if (preferences.useHlsLinks) {
-            val videoUrl = KwikExtractor(client).getHlsStreamUrl(kwikUrl, referer = baseUrl)
-            StreamSource(
-                url = videoUrl,
-                fullName = "Kwik - $quality",
-                quality = quality,
-                server = "Kwik",
-                headers = Headers.headersOf("referer", "https://kwik.cx"),
-            )
+    private fun getVideo(paheUrl: String, kwikUrl: String, quality: String, referer: String): StreamSource {
+        // The video host checks the referer too, it must be the player's origin
+        val kwikOrigin = kwikUrl.toHttpUrl().origin()
+        val videoUrl = if (preferences.useHlsLinks) {
+            KwikExtractor(client).getHlsStreamUrl(kwikUrl, referer = referer)
         } else {
-            val videoUrl = KwikExtractor(client).getStreamUrlFromKwik(paheUrl)
-            StreamSource(
-                url = videoUrl,
-                fullName = "Kwik - $quality",
-                server = "Kwik",
-                quality = quality
-            )
+            KwikExtractor(client).getStreamUrlFromKwik(paheUrl)
         }
+        return StreamSource(
+            url = videoUrl,
+            fullName = "Kwik - $quality",
+            quality = quality,
+            server = "Kwik",
+            headers = Headers.headersOf("referer", kwikOrigin),
+        )
     }
+
+    private fun HttpUrl.origin(): String = "$scheme://$host/"
 
     override fun List<StreamSource>.sort(): List<StreamSource> {
         return this.groupBy { it.server.lowercase() }.entries
@@ -291,23 +318,61 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
                     ) else true
                 }.sortedWith(
                     compareBy { source ->
-                        when {
-                            source.quality.isEmpty() -> Int.MAX_VALUE
-                            else -> {
-                                val matchResult = Regex("""(\d+)""").find(source.quality)
-                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
-                            }
-                        }
+                        // e.g. "SubsPlease · 1080p BD": the fansub name may hold digits too
+                        RESOLUTION_REGEX.find(source.quality)?.groupValues?.get(1)?.toInt()
+                            ?: Int.MAX_VALUE
                     }
                 ).reversed()
             }
     }
 
     // ============================= Utilities ==============================
-    private fun fetchSession(animeId: String): String {
-        val resolveAnimeRequest = client.newCall(GET("$baseUrl/a/$animeId")).execute()
-        val sessionId = resolveAnimeRequest.request.url.pathSegments.last()
-        return sessionId
+
+    /** Anime id to its session and when it was resolved: details and episodes ask for it together. */
+    private val sessions = ConcurrentHashMap<String, Pair<String, Long>>()
+
+    // The latest and search lists hand the sessions out for free, the search API is rate limited
+    private fun rememberSession(animeId: Int, session: String?) {
+        if (!session.isNullOrBlank()) sessions[animeId.toString()] = session to System.currentTimeMillis()
+    }
+
+    /**
+     * The pages and the episodes API take the anime's session rather than its id. The site now
+     * blocks the /a/<id> redirect that used to give it (403), but its search results hold both.
+     */
+    private fun fetchSession(anime: Anime): String {
+        val animeId = anime.getId()
+        sessions[animeId]?.let { (session, resolvedAt) ->
+            if (System.currentTimeMillis() - resolvedAt < SESSION_CACHE_MILLIS) return session
+        }
+        val session = searchQueries(anime.title).firstNotNullOfOrNull { searchSession(it, animeId) }
+            ?: throw Exception(i18n.getString("anime_session_not_found"))
+        sessions[animeId] = session to System.currentTimeMillis()
+        return session
+    }
+
+    // The search only returns its 8 best matches: the exact title, then without the punctuation
+    // the search may trip on
+    private fun searchQueries(title: String): List<String> {
+        val loose = title.replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+        return listOf(title.trim(), loose).filter { it.isNotEmpty() }.distinct()
+    }
+
+    private fun searchSession(query: String, animeId: String): String? {
+        val url = "$baseUrl/api".toHttpUrl().newBuilder()
+            .addQueryParameter("m", "search")
+            .addQueryParameter("q", query)
+            .build()
+        return client.newCall(GET(url.toString())).execute().use { response ->
+            if (response.code == 429) throw IOException(i18n.getString("search_rate_limited"))
+            if (!response.isSuccessful) throw IOException("AnimePahe search failed: HTTP ${response.code}")
+            // No match gives a body without results
+            val results = runCatching {
+                json.decodeFromString<ResponseDto<SearchResultDto>>(response.body.string()).items
+            }.getOrDefault(emptyList())
+            results.forEach { rememberSession(it.id, it.session) }
+            results.firstOrNull { it.id.toString() == animeId }?.session
+        }
     }
 
     private fun Anime.getId() = url.substringAfterLast("?anime_id=").substringBefore("\"")
@@ -322,5 +387,7 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         private val DATE_FORMATTER by lazy {
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
         }
+        private val RESOLUTION_REGEX = Regex("""(\d{3,4})p""")
+        private const val SESSION_CACHE_MILLIS = 30 * 60 * 1000L
     }
 }

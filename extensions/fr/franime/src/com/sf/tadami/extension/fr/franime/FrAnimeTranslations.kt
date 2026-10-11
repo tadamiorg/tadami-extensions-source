@@ -25,8 +25,8 @@ val FrAnimeTranslations : Translations = mapOf(
         Language.fr to "Remplacer le user agent de base"
     ),
     "sources_preferences_user_agent_subtitle" to mapOf(
-        Language.en to "If you want to modify the source user agent in case it is not working already.",
-        Language.fr to "Si vous souhaitez modifier le user agent de base de la source si celle-ci ne fonctionne plus."
+        Language.en to "If you want to modify the source user agent in case it is not working already. Set it to \"default\" to use the app's one.",
+        Language.fr to "Si vous souhaitez modifier le user agent de base de la source si celle-ci ne fonctionne plus. Mettez \"default\" pour utiliser celui de l'application."
     ),
     "sources_preferences_players_order" to mapOf(
         Language.en to "Server priority",
@@ -40,23 +40,16 @@ val FrAnimeTranslations : Translations = mapOf(
         Language.en to """
             #### If you don't have sources
 
-            Go to the webview (Planet icon) :
-            - Click on "Watch episode"
-            - Complete the Cloudflare verification
-            - Exit the webview and reload the episode
-
-            You should then be able to watch other episodes without having to repeat this process.
+            FrAnime limits how many requests can be made in a short time:
+            - Wait a few seconds and reload the episode
+            - If a server keeps failing, move it down in the server priority of the source settings
            """.trimIndent(),
         Language.fr to """
             #### Si vous n'avez pas de sources
 
-            Aller dans la webview (Icone de planète) :
-            - Cliquer sur "Regarder l'épisode"
-            - Valider le test Cloudflare
-            - Quitter la webview et recharger l'épisode
-            
-            Vous devriez ensuite pouvoir regarder d'autres épisodes sans avoir à refaire la manipulation.
-
+            FrAnime limite le nombre de requêtes sur une courte période :
+            - Attendez quelques secondes et rechargez l'épisode
+            - Si un serveur échoue souvent, descendez-le dans la priorité des serveurs des paramètres de la source
             """.trimIndent()
     )
 )

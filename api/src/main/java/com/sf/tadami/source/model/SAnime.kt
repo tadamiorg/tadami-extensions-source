@@ -9,6 +9,12 @@ interface SAnime{
      * to [title].
      */
     var rawTitle : String?
+    /**
+     * Language of this entry when the site lists each language as its own anime (e.g. "VF",
+     * "VOSTFR"). The app shows it as a badge next to the title on every screen, so keep it out of
+     * [title]. Optional; an extension that sets it needs lib 1.6 (`set("apiVersion", "1.6")`).
+     */
+    var language : String?
     var thumbnailUrl : String?
     var release : String?
     var studio : String?

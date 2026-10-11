@@ -61,7 +61,8 @@ class DdosGuardInterceptor(private val client: OkHttpClient) : Interceptor {
             .substringAfter("'", "")
             .substringBefore("'", "")
         val checkUrl = "${url.scheme}://${url.host + wellKnown}"
-        return client.newCall(GET(checkUrl)).execute().header("set-cookie")?.let {
+        // Only the headers are needed, but the response must still be closed
+        return client.newCall(GET(checkUrl)).execute().use { it.header("set-cookie") }?.let {
             Cookie.parse(url, it)
         }
     }

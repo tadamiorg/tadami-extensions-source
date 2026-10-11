@@ -103,6 +103,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     // ============================== Preferences ===============================
 
+    /** Returns true when an update was migrated (not on a fresh install or an unchanged version). */
     private suspend fun preferencesMigrations(): Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
@@ -142,8 +143,9 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     AnimeSamaPreferences.PLAYER_STREAMS_ORDER
                 )
             }
+            return true
         }
-        return true
+        return false
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -172,11 +174,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         val lang =
             element.selectFirst("div.language-badge-top > img.flag-icon")?.attr("title")?.trim()
                 ?: ""
-        val titleLang =
-            if (lang.lowercase() == "vostfr") "" else "${lang.uppercase(Locale.getDefault())} "
-        val title = "$titleLang$titleText"
         val anime: SAnime = SAnime.create()
-        anime.title = title
+        anime.title = titleText
+        // Shown by the app as a badge, so it stays visible however long the title is
+        anime.language = lang.uppercase(Locale.getDefault()).ifBlank { null }
         anime.thumbnailUrl = element.selectFirst("img")?.attr("src")
         anime.setUrlWithoutDomain(element.attr("href").removeSuffix("/"))
         return anime
@@ -223,7 +224,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                                 doc.select("h2 + p + div > script, h2 + div > script").toString()
 
                             val seasons = seasonRegex.findAll(scripts)
-                                .fold(mutableListOf<Pair<String, String>>()) { acc, match ->
+                                .fold(mutableListOf<Triple<String, String, String>>()) { acc, match ->
                                     val (seasonName, seasonUrl) = match.destructured
 
                                     VOICES_VALUES.parallelMap { voice ->
@@ -240,11 +241,12 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                                 }
 
 
-                            seasons.map { (seasonName, seasonUrl) ->
+                            seasons.map { (seasonName, seasonUrl, language) ->
                                 val animeSeason = SAnime.create()
                                 animeSeason.url = "${anime.url}/$seasonUrl"
                                 animeSeason.thumbnailUrl = anime.thumbnailUrl
                                 animeSeason.title = "$seasonName - ${anime.title}"
+                                animeSeason.language = language
                                 animeSeason
                             }
                         }
@@ -263,15 +265,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         seasonName: String,
         seasonUrl: String,
         lang: String
-    ): Pair<String, String>? {
+    ): Triple<String, String, String>? {
         try {
-            val isVo = lang === "vostfr"
             val langUrlStem = "${seasonUrl.substringBeforeLast("/")}/$lang"
             val langRes =
                 client.newCall(HEAD("$baseUrl${anime.url}/$langUrlStem", headers)).execute()
             if (langRes.isSuccessful) {
-                val titleLang = if (isVo) "" else "${lang.uppercase(Locale.getDefault())} "
-                return "$titleLang$seasonName" to langUrlStem
+                return Triple(seasonName, langUrlStem, lang.uppercase(Locale.getDefault()))
             }
             return null
         } catch (_: Exception) {
@@ -342,9 +342,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         var seasonName = dbAnime.title
         if (foundSeason != null) {
             val (name, _) = foundSeason.destructured
-            val lang = dbAnime.url.removeSuffix("/").substringAfterLast("/").uppercase()
-            val langTitle = if (lang == "VOSTFR") "" else "$lang "
-            seasonName = "$langTitle$name - $animeTitle"
+            seasonName = "$name - $animeTitle"
+            anime.language = dbAnime.url.removeSuffix("/").substringAfterLast("/").uppercase()
         }
 
         anime.title = seasonName

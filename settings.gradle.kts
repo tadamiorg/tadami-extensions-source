@@ -13,13 +13,24 @@ if (System.getenv("CI") != "true") {
     loadAllIndividualExtensions()
 } else {
     // Running in CI (GitHub Actions)
+    val requested = System.getenv("CI_EXTENSIONS")
+    val chunkSize = System.getenv("CI_CHUNK_SIZE")?.toIntOrNull()
+    val chunk = System.getenv("CI_CHUNK_NUM")?.toIntOrNull()
 
-    val chunkSize = System.getenv("CI_CHUNK_SIZE").toInt()
-    val chunk = System.getenv("CI_CHUNK_NUM").toInt()
-
-    // Loads individual extensions
-    File(rootDir, "extensions").getChunk(chunk, chunkSize)?.forEach {
-        loadIndividualExtension(it.parentFile.name, it.name)
+    when {
+        // Only the extensions to release, "<lang>.<name>" separated by spaces or commas
+        !requested.isNullOrBlank() -> requested.split(',', ' ', '\n').filter { it.isNotBlank() }.forEach {
+            val (lang, name) = it.trim().split('.', limit = 2).let { parts ->
+                require(parts.size == 2) { "Extension \"$it\" is not <lang>.<name>" }
+                parts[0] to parts[1]
+            }
+            require(File(rootDir, "extensions/$lang/$name").isDirectory) { "No extension at extensions/$lang/$name" }
+            loadIndividualExtension(lang, name)
+        }
+        chunkSize != null && chunk != null -> File(rootDir, "extensions").getChunk(chunk, chunkSize)?.forEach {
+            loadIndividualExtension(it.parentFile.name, it.name)
+        }
+        else -> loadAllIndividualExtensions()
     }
 }
 

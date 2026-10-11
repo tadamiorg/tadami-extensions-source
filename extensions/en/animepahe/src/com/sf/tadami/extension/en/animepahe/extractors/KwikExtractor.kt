@@ -35,6 +35,7 @@ import okhttp3.FormBody
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import java.io.IOException
 
 class KwikExtractor(private val client: OkHttpClient) {
     private var cookies: String = ""
@@ -45,10 +46,20 @@ class KwikExtractor(private val client: OkHttpClient) {
 
     fun getHlsStreamUrl(kwikUrl: String, referer: String): String {
         val eContent = client.newCall(GET(kwikUrl, Headers.headersOf("referer", referer)))
-            .execute().asJsoup()
-        val script = eContent.selectFirst("script:containsData(eval\\(function)")!!.data().substringAfterLast("eval(function(")
-        val unpacked = JsUnpacker.unpackAndCombine("eval(function($script")!!
-        return unpacked.substringAfter("const source=\\'").substringBefore("\\';")
+            .execute().use { response ->
+                // Kwik answers a firewall page (403) instead of the player when it dislikes the request
+                if (!response.isSuccessful) throw IOException("Kwik refused the video: HTTP ${response.code}")
+                response.asJsoup()
+            }
+        val script = eContent.selectFirst("script:containsData(eval\\(function)")
+            ?.data()
+            ?.substringAfterLast("eval(function(")
+            ?: throw IOException("Kwik player script not found")
+        val unpacked = JsUnpacker.unpackAndCombine("eval(function($script")
+            ?: throw IOException("Could not unpack the Kwik player script")
+        val source = unpacked.substringAfter("const source=\\'", "").substringBefore("\\';")
+        if (!source.startsWith("http")) throw IOException("Kwik video url not found")
+        return source
     }
 
     fun getStreamUrlFromKwik(paheUrl: String): String {

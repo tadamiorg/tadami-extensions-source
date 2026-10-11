@@ -61,6 +61,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
         }
     }
 
+    /** Returns true when an update was migrated (not on a fresh install or an unchanged version). */
     private suspend fun preferencesMigrations() : Boolean {
         val oldVersion = preferences.lastVersionCode
         if (oldVersion < BuildConfig.VERSION_CODE) {
@@ -80,8 +81,9 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
                     VoirAnimePreferences.BASE_URL
                 )
             }
+            return true
         }
-        return true
+        return false
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -95,7 +97,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     override fun latestAnimeFromElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
         val imgRef = element.select("div[id*=\"manga-item\"] > a").first()
-        anime.title = element.select("div.item-summary > div > h3.h5 > a").first()!!.text()
+        anime.setTitleAndLanguage(element.select("div.item-summary > div > h3.h5 > a").first()!!.text())
         anime.setUrlWithoutDomain(imgRef!!.attr("href"))
         val imgDiv = imgRef.select("img")
         val imageUrl = when {
@@ -147,7 +149,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     private fun searchAnimeFromQueryElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
         val titleUrl = element.selectFirst("div.post-title h3 a")
-        anime.title = titleUrl?.text().orEmpty()
+        anime.setTitleAndLanguage(titleUrl?.text().orEmpty())
         anime.setUrlWithoutDomain(titleUrl?.attr("href").orEmpty())
         val imgDiv = element.select("div.tab-thumb img")
         anime.thumbnailUrl = if (imgDiv.hasAttr("srcset")) {
@@ -161,7 +163,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     override fun searchAnimeFromElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
         val titleUrl = element.select("div.post-title > h3 > a")
-        anime.title = titleUrl.text()
+        anime.setTitleAndLanguage(titleUrl.text())
         anime.setUrlWithoutDomain(titleUrl.attr("href"))
         val imgDiv = element.select("div.item-thumb > a > img")
         val imageUrl = when {
@@ -208,7 +210,7 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
 
-        anime.title = document.select("div.post-title h1").text()
+        anime.setTitleAndLanguage(document.select("div.post-title h1").text())
         anime.genres = document.select("div.genres-content a").map { it.text() }
         anime.description = document.selectFirst("div.description-summary p")?.text()
         val rightColumnValues = document.select("div.summary_content div.post-content_item")
@@ -353,3 +355,18 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
             }
     }
 }
+
+// The site marks dubbed entries with a trailing "(VF)". The app shows the language as a badge, so it
+// goes in SAnime.language and the title stays clean: "Overgeared (VF)" -> "Overgeared" + "VF"
+internal fun SAnime.setTitleAndLanguage(siteTitle: String) {
+    val match = LANGUAGE_SUFFIX.find(siteTitle)
+    val name = match?.let { siteTitle.substring(0, it.range.first).trimEnd(' ', '-', '\u2013') }
+    if (match == null || name.isNullOrEmpty()) {
+        title = siteTitle
+        return
+    }
+    title = name
+    language = match.groupValues[1].uppercase()
+}
+
+private val LANGUAGE_SUFFIX = Regex("""[\s\-–]*[(\[]?\b(VF|VOSTFR)\b[)\]]?\s*$""", RegexOption.IGNORE_CASE)
