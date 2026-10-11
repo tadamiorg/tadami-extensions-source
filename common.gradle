@@ -27,12 +27,14 @@ android {
         ]
     }
 
+    // fetch() reads environment variables first, then .env: CI has no .env, so the typed env.KEY_FILE
+    // accessors (generated from .env keys) don't exist there
     signingConfigs {
         release {
-            storeFile file(env.KEY_FILE.value)
-            storePassword env.KEY_STORE_PASSWORD.value
-            keyAlias env.ALIAS.value
-            keyPassword env.KEY_STORE_PASSWORD.value
+            storeFile file(env.fetch("KEY_FILE"))
+            storePassword env.fetch("KEY_STORE_PASSWORD")
+            keyAlias env.fetch("ALIAS")
+            keyPassword env.fetch("KEY_STORE_PASSWORD")
         }
     }
 
