@@ -1,6 +1,7 @@
 package com.sf.tadami.lib.playlistutils
 
 import android.net.Uri
+import android.util.Log
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.asJsoup
 import com.sf.tadami.source.model.StreamSource
@@ -87,7 +88,13 @@ class PlaylistUtils(
     ): List<StreamSource> {
         val masterHeaders = masterHeadersGen(headers, referer)
 
-        val masterPlaylist = client.newCall(GET(playlistUrl, masterHeaders)).execute().body.string()
+        val masterPlaylist = client.newCall(GET(playlistUrl, masterHeaders)).execute().use { it.body.string() }
+
+        // An error page (a 502 from the host, a removed file) would otherwise become a source that can't play
+        if ("#EXT" !in masterPlaylist) {
+            Log.w("PlaylistUtils", "Not a playlist: $playlistUrl")
+            return emptyList()
+        }
 
         // Check if there isn't multiple streams available
         if (PLAYLIST_SEPARATOR !in masterPlaylist) {

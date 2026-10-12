@@ -8,18 +8,16 @@ import okhttp3.OkHttpClient
 
 class YourUploadExtractor(private val client: OkHttpClient) {
     fun videosFromUrl(url: String, headers: Headers, name: String = "YourUpload", prefix: String = ""): List<StreamSource> {
-        val newHeaders = headers.newBuilder().add("referer", "https://www.yourupload.com/").build()
+        // Replaces a caller's Referer: with two, the server reads the first one and answers 500 to a foreign one
+        val newHeaders = headers.newBuilder().set("Referer", "https://www.yourupload.com/").build()
         return runCatching {
-            val request = client.newCall(GET(url, headers = newHeaders)).execute()
-            val document = request.asJsoup()
-            val baseData = document.selectFirst("script:containsData(jwplayerOptions)")!!.data()
-            if (!baseData.isNullOrEmpty()) {
-                val basicUrl = baseData.substringAfter("file: '").substringBefore("',")
-                val quality = prefix + name
-                listOf(StreamSource(url = basicUrl, fullName = quality, server = "YourUpload", headers = newHeaders))
-            } else {
-                null
-            }
+            val document = client.newCall(GET(url, headers = newHeaders)).execute().use { it.asJsoup() }
+            val baseData = document.selectFirst("script:containsData(jwplayerOptions)")?.data()
+                ?: return@runCatching null
+            val basicUrl = baseData.substringAfter("file: '").substringBefore("',")
+            // Deleted files point to /embed/novideo.mp4
+            if (!basicUrl.startsWith("http") || "novideo" in basicUrl) return@runCatching null
+            listOf(StreamSource(url = basicUrl, fullName = prefix + name, server = "YourUpload", headers = newHeaders))
         }.getOrNull() ?: emptyList()
     }
 }

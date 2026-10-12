@@ -19,19 +19,32 @@ data class AnimeSamaPreferences(
         val BASE_URL = stringPreferencesKey("base_url")
         const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 17) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.7827.116 Mobile Safari/537.36"
         val USER_AGENT = stringPreferencesKey("user_agent")
+        /** Keys are the lowercased `server` of the stream sources built by the extractors. */
         val DEFAULT_PLAYER_STREAMS_ORDER = mapOf(
-            "sibnet" to "Sibnet",
+            "ansembed" to "AnsEmbed",
+            "voe" to "Voe",
+            "uqload" to "Uqload",
+            "vidhide" to "VidHide",
+            "vk" to "Vk",
             "vidmoly" to "VidMoly",
             "lpayer" to "LPayer",
-            "callistanise" to "Callistanise",
             "sendvid" to "Sendvid",
-            "vidhide" to "VidHide",
-            "smoothpre" to "SmoothPre",
-            "vk" to "Vk",
-            "oneupload" to "OneUpload",
             "yourupload" to "YourUpload",
-            "uqload" to "Uqload",
-            "ansembed" to "AnsEmbed",
+            // 403 everywhere since October 2026, kept in case it comes back
+            "sibnet" to "Sibnet",
+        )
+        /** Servers merged into another one (v31: one VidHide network), which takes the place of the first of them. */
+        private val MERGED_PLAYERS = mapOf(
+            "callistanise" to "vidhide",
+            "smoothpre" to "vidhide",
+        )
+        /** The defaults of earlier versions, also as their migrations completed them: such an order was never changed. */
+        val LEGACY_DEFAULT_PLAYER_STREAMS_ORDERS = setOf(
+            "sibnet,vidmoly,lpayer,callistanise,sendvid,vidhide,smoothpre,vk,oneupload,yourupload,uqload,ansembed",
+            "sibnet,vidmoly,lpayer,callistanise,sendvid,vidhide,smoothpre,vk,oneupload,yourupload",
+            "sibnet,vidmoly,vidhide,smoothpre,sendvid,vk,oneupload,yourupload,lpayer,callistanise,uqload,ansembed",
+            "sibnet,vidmoly,smoothpre,sendvid,vk,oneupload,yourupload,lpayer,callistanise,uqload,ansembed",
+            "sibnet,vidmoly,sendvid,vk,oneupload,yourupload,lpayer,callistanise,uqload,ansembed",
         )
         val PLAYER_STREAMS_ORDER = stringPreferencesKey("player_streams_order")
         val LAST_VERSION_CODE =
@@ -40,11 +53,23 @@ data class AnimeSamaPreferences(
         override fun transform(preferences: Preferences): AnimeSamaPreferences {
             return AnimeSamaPreferences(
                 baseUrl = preferences[BASE_URL] ?: DEFAULT_BASE_URL,
-                playerStreamsOrder = preferences[PLAYER_STREAMS_ORDER]
-                    ?: DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString(separator = ","),
+                playerStreamsOrder = normalizedStreamsOrder(preferences[PLAYER_STREAMS_ORDER]),
                 userAgent = preferences[USER_AGENT] ?: DEFAULT_USER_AGENT,
                 lastVersionCode = preferences[LAST_VERSION_CODE] ?: 0,
             )
+        }
+
+        /**
+         * Keeps the user's order of the known servers: merged ones become their new server, removed ones
+         * (oneupload) are dropped, the ones added since (voe) are appended.
+         */
+        private fun normalizedStreamsOrder(stored: String?): String {
+            val known = DEFAULT_PLAYER_STREAMS_ORDER.keys
+            val order = stored.orEmpty().split(",")
+                .map { MERGED_PLAYERS[it] ?: it }
+                .filter { it in known }
+                .distinct()
+            return (order + known.filterNot { it in order }).joinToString(separator = ",")
         }
 
         override fun setPrefs(newValue: AnimeSamaPreferences, preferences: MutablePreferences) {

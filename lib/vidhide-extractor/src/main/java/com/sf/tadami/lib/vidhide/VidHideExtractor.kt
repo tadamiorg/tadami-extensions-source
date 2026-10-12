@@ -34,10 +34,13 @@ class VidHideExtractor(private val client: OkHttpClient, private val baseUrl: St
 
         val linksJson = matchResult.groupValues[1]
 
-        // Find all URLs containing .m3u8
-        val urlRegex = """"([^"]*\.m3u8[^"]*)"""".toRegex()
+        // Find all URLs containing .m3u8. The keys come in a random order on every load: hls2 (plain
+        // MPEG-TS) first, then hls4, whose segments sit behind an image header on an ad CDN
+        val urlRegex = """"(\w+)"\s*:\s*"([^"]*\.m3u8[^"]*)"""".toRegex()
         val m3u8Urls = urlRegex.findAll(linksJson)
-            .map { it.groupValues[1] }
+            .map { it.groupValues[1] to it.groupValues[2] }
+            .sortedBy { (key, _) -> key }
+            .map { (_, link) -> link }
             .toList()
 
         if(m3u8Urls.isEmpty()){

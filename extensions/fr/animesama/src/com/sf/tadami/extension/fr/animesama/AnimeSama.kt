@@ -5,16 +5,15 @@ import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
-import com.sf.tadami.extension.fr.animesama.extractors.OneUploadExtractor
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.lpayerextractor.LpayerExtractor
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
 import com.sf.tadami.lib.sibnetextractor.SibnetExtractor
-import com.sf.tadami.lib.smoothpreextractor.SmoothPreExtractor
 import com.sf.tadami.lib.uqloadextractor.UqloadExtractor
 import com.sf.tadami.lib.vidhide.VidHideExtractor
 import com.sf.tadami.lib.vidmolyextractor.VidmolyExtractor
 import com.sf.tadami.lib.vkextractor.VkExtractor
+import com.sf.tadami.lib.voeextractor.VoeExtractor
 import com.sf.tadami.lib.youruploadextractor.YourUploadExtractor
 import com.sf.tadami.network.GET
 import com.sf.tadami.network.HEAD
@@ -35,15 +34,19 @@ import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import uy.kohesive.injekt.injectLazy
 import java.util.Locale
 
 @Suppress("UNUSED")
@@ -63,11 +66,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", preferences.userAgent)
 
-    private var episodeNumber: Int? = null
-
     private val VOICES_VALUES = listOf("vostfr", "vf", "vj", "va")
 
     private val i18n = i18n(AnimeSamaTranslations)
+
+    private val json: Json by injectLazy()
 
     private fun getMainUrl() {
         CoroutineScope(Dispatchers.IO).launch {
@@ -105,47 +108,35 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     /** Returns true when an update was migrated (not on a fresh install or an unchanged version). */
     private suspend fun preferencesMigrations(): Boolean {
-        val oldVersion = preferences.lastVersionCode
-        if (oldVersion < BuildConfig.VERSION_CODE) {
+        // Read the store itself: on older apps `preferences` still holds the defaults this early
+        val stored = dataStore.data.first()
+        val oldVersion = stored[AnimeSamaPreferences.LAST_VERSION_CODE] ?: 0
+        if (oldVersion >= BuildConfig.VERSION_CODE) return false
+
+        dataStore.editPreference(
+            BuildConfig.VERSION_CODE,
+            intPreferencesKey(AnimeSamaPreferences.LAST_VERSION_CODE.name)
+        )
+
+        // Fresh install: the defaults apply
+        if (oldVersion == 0) return false
+
+        // v31: an order the user never changed follows the new default (AnsEmbed and VOE first, Sibnet last)
+        if (oldVersion in 1 until 31 &&
+            stored[AnimeSamaPreferences.PLAYER_STREAMS_ORDER] in AnimeSamaPreferences.LEGACY_DEFAULT_PLAYER_STREAMS_ORDERS
+        ) {
             dataStore.editPreference(
-                BuildConfig.VERSION_CODE,
-                intPreferencesKey(AnimeSamaPreferences.LAST_VERSION_CODE.name)
+                AnimeSamaPreferences.DEFAULT_PLAYER_STREAMS_ORDER.keys.joinToString(separator = ","),
+                AnimeSamaPreferences.PLAYER_STREAMS_ORDER
             )
-
-            // Fresh install
-            if (oldVersion == 0) {
-                return false
-            }
-
-            if (oldVersion < 28) {
-                val streamOrder = preferences.playerStreamsOrder.split(",").toMutableList()
-
-                if (oldVersion < 23) {
-                    if (!streamOrder.contains("lpayer")) {
-                        streamOrder.add("lpayer")
-                    }
-
-                    if (!streamOrder.contains("callistanise")) {
-                        streamOrder.add("callistanise")
-                    }
-                }
-
-                if (!streamOrder.contains("uqload")) {
-                    streamOrder.add("uqload")
-                }
-
-                if (!streamOrder.contains("ansembed")) {
-                    streamOrder.add("ansembed")
-                }
-
-                dataStore.editPreference(
-                    streamOrder.joinToString(separator = ","),
-                    AnimeSamaPreferences.PLAYER_STREAMS_ORDER
-                )
-            }
-            return true
         }
-        return false
+
+        // transform() brings a stored order up to date: merged servers take the place of the first of them,
+        // removed ones are dropped and new ones appended. Written back so the preference screen shows it
+        val order = dataStore.data.map { AnimeSamaPreferences.transform(it).playerStreamsOrder }.first()
+        dataStore.editPreference(order, AnimeSamaPreferences.PLAYER_STREAMS_ORDER)
+
+        return true
     }
 
     override fun getPreferenceScreen(): SourcesPreferencesContent {
@@ -521,112 +512,154 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         val document: Document = response.asJsoup()
         val javascriptCode = Html.fromHtml(document.html(), Html.FROM_HTML_MODE_LEGACY).toString()
         val pattern = Regex("""(?<!\/\*)var (.*?) = \[(.*?)\];""")
-        val matches = pattern.findAll(javascriptCode)
 
-        val variableArrays: Map<String, List<String>> = matches.associate { matchResult ->
-            val variableName = matchResult.groupValues[1]
-            val urls = matchResult.groupValues[2]
+        // One array per player, indexed by episode
+        val players = pattern.findAll(javascriptCode).map { matchResult ->
+            matchResult.groupValues[2]
                 .split(",")
-                .map { it.trim('\'', '"', ' ', '\n', '\r') }
-            variableName to urls
-        }
-        val streamSourcesList = mutableListOf<StreamSource>()
-        val rawStreamSourceUrls = mutableListOf<String>()
+                .map { it.trim('\'', '"', ' ', '\n', '\r', '\t') }
+        }.toList()
+
+        val episodeNumber = originUrl.substringAfter("?number=").toInt()
+        // The same link is often in two players
+        val episodePlayers = players
+            .mapNotNull { it.getOrNull(episodeNumber - 1)?.toHttpUrlOrNull() }
+            .distinct()
+
+        // A VOE code plays on any VOE domain. The site links mirrors with random names that come and go,
+        // so each code is also tried on the other VOE hosts of the season
+        val voeHosts = (players.flatten().mapNotNull { it.toHttpUrlOrNull() }
+            .filter { hostOf(it) == Host.VOE }
+            .map { it.host } + VOE_HOSTS).distinct()
+
         val newClient = client.shortTimeOutBuilder(15)
 
-        streamSourcesList.addAll(
-            variableArrays.values.parallelMap { urls ->
-                runCatching {
-                    val streamUrl = episodeNumber?.let { urls[it - 1] } ?: return@parallelMap null
-                    if (rawStreamSourceUrls.contains(streamUrl)) return@parallelMap null
-                    rawStreamSourceUrls.add(streamUrl)
+        return episodePlayers.parallelMap { url ->
+            runCatching { sourcesFromPlayer(newClient, url, voeHosts) }
+                .onFailure { Log.e(TAG, "Could not extract the streams of $url", it) }
+                .getOrNull()
+                .orEmpty()
+                .also { if (it.isEmpty()) Log.w(TAG, "No stream from $url") }
+        }.flatten()
+    }
 
-                    when {
-                        listOf("sendvid.com", "sendvid").any { streamUrl.contains(it) } -> {
-                            SendvidExtractor(newClient, headers).videosFromUrl(streamUrl)
-                        }
+    private enum class Host { ANSEMBED, VIDMOLY, VIDHIDE, VOE, UQLOAD, SENDVID, VK, LPAYER, SIBNET, YOURUPLOAD, UNKNOWN }
 
-                        listOf("sibnet.ru", "sibnet").any { streamUrl.contains(it) } -> {
-                            SibnetExtractor(newClient).videosFromUrl(streamUrl)
-                        }
+    private fun hostOf(url: HttpUrl): Host {
+        // HttpUrl lowercases the host: the site writes "Smoothpre.com"
+        val host = url.host.removePrefix("www.")
+        return when {
+            host == ANSEMBED_HOST -> Host.ANSEMBED
+            "vidmoly" in host -> Host.VIDMOLY
+            host in VIDHIDE_HOSTS -> Host.VIDHIDE
+            "uqload" in host -> Host.UQLOAD
+            host == "sendvid.com" -> Host.SENDVID
+            host in VK_HOSTS -> Host.VK
+            host.endsWith("embed4me.com") -> Host.LPAYER
+            host.endsWith("sibnet.ru") -> Host.SIBNET
+            host == "yourupload.com" -> Host.YOURUPLOAD
+            "voe" in host -> Host.VOE
+            // VOE mirrors have random names (teresapoliticallearn.com, ...), all with /e/<code>
+            VOE_MIRROR_REGEX.matches(host) && VOE_PATH_REGEX.matches(url.encodedPath) -> Host.VOE
+            else -> Host.UNKNOWN
+        }
+    }
 
-                        listOf("vkvideo.ru").any { streamUrl.contains(it) } -> {
-                            VkExtractor(newClient, headers).videosFromUrl(streamUrl)
-                        }
+    private fun sourcesFromPlayer(client: OkHttpClient, url: HttpUrl, voeHosts: List<String>): List<StreamSource> {
+        val link = url.toString()
+        return when (hostOf(url)) {
+            Host.ANSEMBED -> ansEmbedSources(client, url)
+            Host.VIDMOLY -> vidmolySources(client, url)
+            Host.VIDHIDE -> vidHideSources(client, url)
+            Host.VOE -> voeSources(client, url, voeHosts)
+            Host.UQLOAD -> UqloadExtractor(client).videosFromUrl(uqloadUrl(url))
+            // Empty players: "sendvid.com/embed/", "video_ext.php?oid=&hd=3"
+            Host.SENDVID -> if (SENDVID_PATH_REGEX.matches(url.encodedPath)) {
+                SendvidExtractor(client, headers).videosFromUrl(link)
+            } else {
+                emptyList()
+            }
 
-                        listOf("yourupload.com").any { streamUrl.contains(it) } -> {
-                            YourUploadExtractor(newClient).videosFromUrl(streamUrl, headers)
-                        }
+            Host.VK -> if (url.queryParameter("id").isNullOrBlank()) {
+                emptyList()
+            } else {
+                VkExtractor(client, headers).videosFromUrl(link)
+            }
 
-                        listOf(
-                            "vidmoly.net",
-                            "vidmoly.to",
-                            "vidmoly"
-                        ).any { streamUrl.contains(it) } -> {
-                            VidmolyExtractor(
-                                newClient,
-                                headers
-                            ).videosFromUrl(streamUrl.replace("vidmoly.to", "vidmoly.net"))
-                        }
+            Host.LPAYER -> LpayerExtractor(client).videosFromUrl(link, siteUrl = baseUrl)
+            Host.SIBNET -> SibnetExtractor(client).videosFromUrl(link)
+            Host.YOURUPLOAD -> YourUploadExtractor(client).videosFromUrl(link, headers)
+            Host.UNKNOWN -> {
+                Log.w(TAG, "Unsupported player $link")
+                emptyList()
+            }
+        }
+    }
 
-                        listOf("oneupload.to", "oneupload").any { streamUrl.contains(it) } -> {
-                            OneUploadExtractor(newClient, headers).videosFromUrl(streamUrl)
-                        }
+    /** AnsEmbed is Vidmoly's white label: when ansembed.net can't be reached, the same code plays on vidmoly.org. */
+    private fun ansEmbedSources(client: OkHttpClient, url: HttpUrl): List<StreamSource> {
+        // "embed-.html" placeholders have no code
+        val code = VIDMOLY_PATH_REGEX.matchEntire(url.encodedPath)?.groupValues?.get(1) ?: return emptyList()
+        val extractor = VidmolyExtractor(client, headers)
+        return runCatching {
+            extractor.videosFromUrl("https://$ANSEMBED_HOST/embed-$code.html", server = ANSEMBED_SERVER)
+        }.getOrElse { error ->
+            Log.w(TAG, "AnsEmbed $code: ${error.message} on $ANSEMBED_HOST, trying $VIDMOLY_HOST")
+            extractor.videosFromUrl("https://$VIDMOLY_HOST/embed-$code.html", server = ANSEMBED_SERVER)
+        }
+    }
 
-                        listOf("uqload").any { streamUrl.contains(it) } -> {
-                            UqloadExtractor(newClient).videosFromUrl(streamUrl)
-                        }
+    /** vidmoly.to is parked and vidmoly.net/.biz are DNS-blocked by some ISPs: the codes play on vidmoly.org and ansembed.net. */
+    private fun vidmolySources(client: OkHttpClient, url: HttpUrl): List<StreamSource> {
+        val code = VIDMOLY_PATH_REGEX.matchEntire(url.encodedPath)?.groupValues?.get(1) ?: return emptyList()
+        return mirrorSources("Vidmoly", code, listOf(VIDMOLY_HOST, ANSEMBED_HOST)) { host ->
+            VidmolyExtractor(client, headers).videosFromUrl("https://$host/embed-$code.html")
+        }
+    }
 
-                        listOf("ansembed").any { streamUrl.contains(it) } -> {
-                            VidmolyExtractor(newClient, headers).videosFromUrl(
-                                streamUrl,
-                                server = "AnsEmbed"
-                            )
-                        }
+    /**
+     * Every domain of the VidHide network serves the same /embed/<code>, most of them by redirecting to
+     * callistanise.com, which some ISPs block like minochinos.com. The mirrors serving the codes themselves
+     * come first, the link's own host last.
+     */
+    private fun vidHideSources(client: OkHttpClient, url: HttpUrl): List<StreamSource> {
+        val code = url.pathSegments.lastOrNull { it.isNotBlank() } ?: return emptyList()
+        return mirrorSources("VidHide", code, VIDHIDE_MIRRORS + url.host) { host ->
+            VidHideExtractor(client, "https://$host")
+                .videosFromUrl("https://$host/embed/$code", prefix = VIDHIDE_SERVER, server = VIDHIDE_SERVER)
+        }
+    }
 
-                        listOf("Smoothpre.com").any { streamUrl.contains(it) } -> {
-                            SmoothPreExtractor(newClient).videosFromUrl(streamUrl)
-                        }
+    /** The code on its own host first, then on the other VOE hosts until one serves it. */
+    private fun voeSources(client: OkHttpClient, url: HttpUrl, voeHosts: List<String>): List<StreamSource> {
+        val code = url.pathSegments.lastOrNull { it.isNotBlank() } ?: return emptyList()
+        return mirrorSources("VOE", code, listOf(url.host) + voeHosts) { host ->
+            VoeExtractor(client, json).videosFromUrl("https://$host/e/$code")
+        }
+    }
 
-                        listOf("movearnpre.com", "movearnpre").any { streamUrl.contains(it) } -> {
-                            VidHideExtractor(
-                                newClient,
-                                "https://HI3THh5OxxWw.ovaltinecdn.com"
-                            ).videosFromUrl(streamUrl)
-                        }
+    /** Tries a code on each mirror of its host until one gives streams. */
+    private fun mirrorSources(
+        server: String,
+        code: String,
+        hosts: List<String>,
+        extract: (host: String) -> List<StreamSource>,
+    ): List<StreamSource> {
+        var lastError: Throwable? = null
+        for (host in hosts.distinct()) {
+            val result = runCatching { extract(host) }
+            result.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+            lastError = result.exceptionOrNull() ?: lastError
+            Log.w(TAG, "$server $code: nothing on $host" + (result.exceptionOrNull()?.let { " (${it.message})" } ?: ""))
+        }
+        lastError?.let { throw it }
+        return emptyList()
+    }
 
-                        listOf("minochinos.com").any { streamUrl.contains(it) } -> {
-                            VidHideExtractor(
-                                newClient,
-                                baseUrl = streamUrl.toHttpUrl().origin()
-                            ).videosFromUrl(streamUrl)
-                        }
-
-                        listOf(
-                            "lpayer.embed4me.com",
-                            "embed4me",
-                            "lpayer"
-                        ).any { streamUrl.contains(it) } -> {
-                            LpayerExtractor(newClient).videosFromUrl(streamUrl)
-                        }
-
-                        listOf(
-                            "dingtezuni",
-                            "callistanise",
-                        ).any { streamUrl.contains(it) } -> {
-                            VidHideExtractor(
-                                newClient,
-                                baseUrl = streamUrl.toHttpUrl().origin()
-                            ).videosFromUrl(streamUrl, "Callistanise", "Callistanise")
-                        }
-
-                        else -> null
-                    }
-                }.getOrNull()
-            }.filterNotNull().flatten(),
-        )
-
-        return streamSourcesList
+    /** uqload.vc/embed/<code> answers 404 (on the site too), the same code plays at /embed-<code>.html. */
+    private fun uqloadUrl(url: HttpUrl): String {
+        val code = UQLOAD_PATH_REGEX.matchEntire(url.encodedPath)?.groupValues?.get(1) ?: return url.toString()
+        return "https://$UQLOAD_HOST/embed-$code.html"
     }
 
     override fun fetchEpisodeSources(url: String): Observable<List<StreamSource>> {
@@ -643,7 +676,6 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         throw Exception("Not used")
 
     override fun episodeSourcesRequest(url: String): Request {
-        episodeNumber = url.substringAfter("?number=").toInt()
         return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", headers)
     }
 
@@ -652,32 +684,44 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     }
 
     override fun List<StreamSource>.sort(): List<StreamSource> {
+        val order = preferences.playerStreamsOrder.split(",")
         return this.groupBy { it.server.lowercase() }.entries
-            .sortedWith(
-                compareBy { (server, _) ->
-                    preferences.playerStreamsOrder.split(",").indexOf(server)
+            .sortedBy { (server, _) -> order.indexOf(server).takeIf { it >= 0 } ?: Int.MAX_VALUE }
+            .flatMap { (_, sources) ->
+                // Best quality first, sources without one (a single MP4) last
+                sources.sortedByDescending { source ->
+                    NUMBER_REGEX.find(source.quality)?.value?.toIntOrNull() ?: -1
                 }
-            ).flatMap { group ->
-                group.value.sortedWith(
-                    compareBy { source ->
-                        when {
-                            source.quality.isEmpty() -> Int.MAX_VALUE // Empty strings come last
-                            else -> {
-                                val matchResult = Regex("""(\d+)""").find(source.quality)
-                                matchResult?.groupValues?.get(1)?.toInt() ?: Int.MAX_VALUE
-                            }
-                        }
-                    }
-                ).reversed()
             }
     }
 
-    private fun HttpUrl.origin(): String {
-        val portPart = if ((scheme == "https" && port == 443) || (scheme == "http" && port == 80)) {
-            ""
-        } else {
-            ":$port"
-        }
-        return "$scheme://$host$portPart"
+    companion object {
+        private const val TAG = "AnimeSama"
+
+        private const val ANSEMBED_HOST = "ansembed.net"
+        private const val ANSEMBED_SERVER = "AnsEmbed"
+        private const val VIDMOLY_HOST = "vidmoly.org"
+        private const val UQLOAD_HOST = "uqload.vc"
+        private const val VIDHIDE_SERVER = "VidHide"
+
+        /** VidHide network domains linked by the site (movearnpre.com and mivalyo.com are gone, their codes live on). */
+        private val VIDHIDE_HOSTS = setOf(
+            "minochinos.com", "callistanise.com", "dingtezuni.com", "morencius.com", "smoothpre.com",
+            "movearnpre.com", "mivalyo.com", "bingezove.com", "vidhidevip.com", "vidhidepre.com",
+        )
+        /** VidHide mirrors that serve the codes themselves, not blocked by the ISPs that block callistanise.com. */
+        private val VIDHIDE_MIRRORS = listOf("smoothpre.com", "morencius.com", "callistanise.com")
+
+        /** voe.sx redirects to the current player mirror (blocked by some ISPs, the site's mirrors are tried first). */
+        private val VOE_HOSTS = listOf("voe.sx")
+        private val VOE_MIRROR_REGEX = Regex("""[a-z]{12,}\.com""")
+        private val VOE_PATH_REGEX = Regex("""/e/[A-Za-z0-9]+/?""")
+
+        private val VK_HOSTS = setOf("vk.com", "m.vk.com", "vk.ru", "vkvideo.ru", "m.vkvideo.ru")
+
+        private val VIDMOLY_PATH_REGEX = Regex("""/embed-([A-Za-z0-9]+)\.html""")
+        private val UQLOAD_PATH_REGEX = Regex("""/embed(?:/|-)([A-Za-z0-9]+)(?:\.html)?/?""")
+        private val SENDVID_PATH_REGEX = Regex("""/embed/[A-Za-z0-9]+/?""")
+        private val NUMBER_REGEX = Regex("""\d+""")
     }
 }
