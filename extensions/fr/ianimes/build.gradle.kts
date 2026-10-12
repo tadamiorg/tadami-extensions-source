@@ -6,7 +6,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",1)
+        set("extVersionCode",2)
         set("extName","IAnimes")
         set("pkgNameSuffix","fr.ianimes")
         set("extClass",".IAnimes")
