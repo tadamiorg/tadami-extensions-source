@@ -49,7 +49,7 @@ work with the app.
 | `extensions/en/animepahe` | JSON API, a custom extractor (`KwikExtractor`), cached lookups, strict referers |
 | `extensions/fr/franime` | JSON API with obfuscated player URLs decoded in Kotlin, server priority with a normalized stored order, episode tooltip |
 | `extensions/en/kickassanime` | JSON API with its own extractor |
-| `extensions/fr/animesama` | Large HTML site with filters and many hosts |
+| `extensions/fr/animesama` | Large HTML site with filters and many hosts: players routed by parsed host (`hostOf()`), codes retried on mirror domains when one is dead or DNS-blocked (`mirrorSources()`: VOE, VidHide, Vidmoly), and the complete server-list migration (merged keys, removed ones, untouched defaults moved to the new default) |
 
 Video host extractors live in `lib/` (`ls lib`: dood, filemoon, streamwish, vidmoly, voe, uqload, vk,
 sibnet, sendvid, mp4upload, okru, ... plus `unpacker` for packed JS and `playlist-utils` for HLS).
@@ -187,21 +187,39 @@ versions. `oldVersion == 0` is a fresh install: nothing to migrate.
       }
   }
   ```
-- **Video servers added, removed or renamed**: update every place that knows the list, or they drift
-  apart:
+- **Video servers added, removed, renamed or merged**: never change the server list without migrating
+  the stored order in the same release. Users who never touched the setting have it stored too (an
+  earlier migration or the preference screen wrote it), so a new server would never show up for them
+  and a removed one would stay listed. Update every place that knows the list, or they drift apart:
   - the default order map (`DEFAULT_PLAYER_STREAMS_ORDER`, keyed by the lowercased `server` the
-    extractors produce)
+    extractors produce: check each extractor's `server =`, e.g. `VidmolyExtractor(..., server = "AnsEmbed")`)
   - the preference screen entry built from it (`ReorderStringPreference` with `items`/`defaultValue`)
     and any labels in the translations
-  - the code mapping player names to servers and extractors (FrAnime's `serverOf()` and
-    `SUPPORTED_PLAYERS`)
-  - the `sort()` override
+  - the code mapping player URLs or names to servers and extractors (FrAnime's `serverOf()` and
+    `SUPPORTED_PLAYERS`, AnimeSama's and IAnimes' `hostOf()`)
+  - the `sort()` override, which must put a server missing from the order last:
+    `order.indexOf(server).takeIf { it >= 0 } ?: Int.MAX_VALUE` (a bare `indexOf` gives -1, so first)
 
-  Then normalize the stored order the way FrAnime's `normalizedStreamsOrder()` does inside
-  `transform()`: keep the user's order for servers that still exist, drop removed ones, append new ones.
-  Its migration writes the normalized values back after bumping `LAST_VERSION_CODE`
-  (`dataStore.editPreferences(transform(prefs), FrAnimePreferences)`). A renamed server key needs
-  explicit handling, or the rename reads as a removal plus an addition and loses its position.
+  Then normalize the stored order inside `transform()`, as AnimeSama's `normalizedStreamsOrder()` does:
+  map merged or renamed keys to their new key first (`MERGED_PLAYERS = mapOf("callistanise" to "vidhide",
+  "smoothpre" to "vidhide")`), keep the user's order of the servers that still exist (`distinct()` puts a
+  merged server where the first of its old keys was), drop removed ones, append new ones. Without the
+  map a rename reads as a removal plus an addition and loses its position.
+
+  The migration, in `preferencesMigrations()` (AnimeSama v31 is the complete example):
+  1. Read the old version and the stored order from `dataStore.data.first()`, not from `preferences`.
+  2. When the default order itself changes, move users who never changed it to the new default: keep the
+     earlier defaults, including the forms earlier migrations completed them to, in a
+     `LEGACY_DEFAULT_PLAYER_STREAMS_ORDERS` set, and gate it with `oldVersion in 1 until N`. A custom
+     order is never reset.
+  3. Write the normalized order back (`dataStore.editPreference(transform(prefs).playerStreamsOrder,
+     PLAYER_STREAMS_ORDER)`), so the preference screen shows the merged, removed and new servers. Writing
+     only this key is safer than `editPreferences(transform(prefs), ...)` (FrAnime), which also stores
+     every other default (base URL, user agent) and pins it for later releases.
+
+  Check the migration on the order strings before building: an old default becomes the new default, and
+  a custom order such as `smoothpre,uqload,sibnet` becomes `vidhide,uqload,sibnet,` followed by the new
+  servers.
 - **Test the migration like a user upgrading**: install the old published version, set the preference
   (or leave the old default), install the new build over it, and check the value was migrated, not
   reset. For the base URL, a custom URL must survive; for servers, a custom order must keep its
