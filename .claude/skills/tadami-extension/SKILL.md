@@ -100,6 +100,17 @@ These come from real breakages; each one explains what goes wrong when it's brok
   and set `apiVersion` to `1.6`. The app shows the language as a badge on every screen, so a long
   title can't hide it. Strip any language marker the site puts in its own titles
   (`Overgeared (VF)` gives title `Overgeared` and language `VF`).
+- **The season goes at the start of the title, the bare name in `rawTitle`.** "Saison 2 - Overgeared"
+  (French sites) or "Season 2 - Overgeared" (English ones), never "Overgeared Saison 2" / "Overgeared
+  2nd Season": grid cards, notifications and history cut long titles at the end, so a trailing season
+  gets hidden. Build the same string in recents, search and details for the same url: the app stores the
+  listing's title, then the details' one on open, so different formats flip the title back and forth.
+  Move only an explicit season marker at the end ("Season 2", "2nd Season", "Saison 2", the site's own
+  "S2"): a bare trailing number or roman numeral is often part of the name ("Mob Psycho 100", "Kaiju
+  No. 8", "Lupin III", "86"). Set `rawTitle` to the name the site's search finds (the bare name, or the
+  site's untouched title when its search needs it, as on AnimePahe): the app uses `rawTitle ?: title` for
+  migration and for the search behind a tap on the title. Code that reads a stored title back must read
+  `rawTitle ?: title`, since older entries keep their old title until a pull-to-refresh of their details.
 - **Episodes come newest first.** The app stores each episode's position in the returned list as
   `sourceOrder` (0 = newest) and finds the "next episode" from it. Reverse a site that lists oldest
   first, and number episodes so the order still reads right across seasons and films.
