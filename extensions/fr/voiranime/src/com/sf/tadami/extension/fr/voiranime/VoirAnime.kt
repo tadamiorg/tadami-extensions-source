@@ -356,17 +356,38 @@ class VoirAnime : ConfigurableParsedHttpAnimeSource<VoirAnimePreferences>(
     }
 }
 
-// The site marks dubbed entries with a trailing "(VF)". The app shows the language as a badge, so it
-// goes in SAnime.language and the title stays clean: "Overgeared (VF)" -> "Overgeared" + "VF"
+// The site marks dubbed entries with a trailing "(VF)" and some seasons with a trailing "S2", "(S3)",
+// "Season 2" or "2nd Season". The language goes in SAnime.language (shown as a badge) and the season
+// first, as in the other sources: "BEASTARS S2 (VF)" -> "Saison 2 - BEASTARS" + "VF". A bare trailing
+// number ("Mushoku Tensei 3", "Kaiju No 8") can be part of the name, so it stays. rawTitle is the name
+// without season nor language: the site's search finds "BEASTARS", not "BEASTARS S2".
 internal fun SAnime.setTitleAndLanguage(siteTitle: String) {
-    val match = LANGUAGE_SUFFIX.find(siteTitle)
-    val name = match?.let { siteTitle.substring(0, it.range.first).trimEnd(' ', '-', '\u2013') }
-    if (match == null || name.isNullOrEmpty()) {
-        title = siteTitle
-        return
+    var name = siteTitle
+    val languageMatch = LANGUAGE_SUFFIX.find(siteTitle)
+    if (languageMatch != null) {
+        val withoutLanguage = siteTitle.substring(0, languageMatch.range.first).trimEnd(' ', '-', '\u2013')
+        if (withoutLanguage.isNotEmpty()) {
+            name = withoutLanguage
+            language = languageMatch.groupValues[1].uppercase()
+        }
     }
-    title = name
-    language = match.groupValues[1].uppercase()
+
+    val seasonMatch = SEASON_SUFFIX.find(name)
+    val season = seasonMatch?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.toIntOrNull()
+    val baseName = seasonMatch?.let { name.substring(0, it.range.first).trimEnd(' ', ':', '-', '\u2013') }
+    if (season != null && !baseName.isNullOrEmpty()) {
+        title = "Saison $season - $baseName"
+        rawTitle = baseName
+    } else {
+        title = name
+        rawTitle = name
+    }
 }
 
 private val LANGUAGE_SUFFIX = Regex("""[\s\-–]*[(\[]?\b(VF|VOSTFR)\b[)\]]?\s*$""", RegexOption.IGNORE_CASE)
+
+// At the very end only: "Season 2" / "Saison 2", "2nd Season" / "2e saison", "S2" / "(S3)"
+private val SEASON_SUFFIX = Regex(
+    """[\s:\-–]+(?:(?:season|saison)\s*(\d+)|(\d+)\s*(?:st|nd|rd|th|e|er|re|ère|ème|eme|nde)\s+(?:season|saison)|\(?S(\d+)\)?)\s*$""",
+    RegexOption.IGNORE_CASE
+)

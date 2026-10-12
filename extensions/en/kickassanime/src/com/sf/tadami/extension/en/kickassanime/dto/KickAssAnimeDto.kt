@@ -28,6 +28,8 @@ data class PopularItemDto(
     val title_en: String? = null,
     val slug: String = "",
     val poster: PosterDto? = null,
+    /** tv, ona, ova, special, movie, tv_special */
+    val type: String? = null,
 )
 
 @Serializable
@@ -46,6 +48,7 @@ data class AnimeInfoDto(
     val title: String = "",
     val title_en: String? = null,
     val year: Int? = null,
+    val type: String? = null,
 )
 
 @Serializable

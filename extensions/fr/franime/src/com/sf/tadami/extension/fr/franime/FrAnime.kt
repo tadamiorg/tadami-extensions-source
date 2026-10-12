@@ -178,9 +178,13 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
     // =========================== Anime Details ============================
 
     override fun fetchAnimeDetails(anime: Anime): Observable<SAnime> {
+        // The title is rebuilt rather than echoed, so entries saved with an older format ("X S2") or an
+        // empty one get the current title on refresh
+        val entry = runCatching { animeOfUrl(anime.url) }.getOrNull()
         val sanime = SAnime.create().apply {
             url = anime.url
-            title = anime.title
+            title = entry?.let { (data, index) -> data.seasonTitle(index) } ?: anime.title
+            rawTitle = entry?.first?.displayName()
             description = anime.description
             genres = anime.genres
             status = anime.status
@@ -388,6 +392,33 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
         return AnimesPage(entries, hasNextPage)
     }
 
+    private val whitespaceRegex by lazy { Regex("\\s+") }
+
+    /** The name the site shows: `title` is empty for about 100 animes (One Punch Man, Overgeared...). */
+    private fun CustomAnime.displayName(): String =
+        title.trim().ifEmpty { titlesAlt.en?.trim().orEmpty() }.ifEmpty { originalTitle.trim() }
+
+    /**
+     * The season first, with the site's own label, as in the other sources: "Saison 2 - Attack on Titan",
+     * "Saison 4.5 - Attack on Titan", "East Blue Saga 1 - One Piece". A single season keeps the bare name.
+     */
+    private fun CustomAnime.seasonTitle(index: Int): String {
+        val name = displayName()
+        if (seasons.size <= 1) return name
+        val season = seasons[index].title.replace(whitespaceRegex, " ").trim().ifEmpty { "Saison ${index + 1}" }
+        return "$season - $name"
+    }
+
+    /** The anime and season index of an entry (/anime/<slug>?lang=vo&s=2), as the episode list finds them. */
+    private fun animeOfUrl(entryUrl: String): Pair<CustomAnime, Int>? {
+        val url = (baseUrl + entryUrl).toHttpUrl()
+        val stem = url.encodedPathSegments.last()
+        val index = (url.queryParameter("s")?.toIntOrNull() ?: 1) - 1
+        return database.firstOrNull { titleToUrl(it.originalTitle) == stem }
+            ?.takeIf { index in it.seasons.indices }
+            ?.let { it to index }
+    }
+
     private val titleRegex by lazy { Regex("[^A-Za-z0-9 ]") }
     private fun titleToUrl(title: String) =
         titleRegex.replace(title, "").replace(" ", "-").lowercase()
@@ -395,7 +426,7 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
     private fun pageToSAnimes(page: List<CustomAnime>): List<SAnime> {
         return page.flatMap { anime ->
             anime.seasons.flatMapIndexed { index, season ->
-                val seasonTitle = anime.title + if (anime.seasons.size > 1) " S${index + 1}" else ""
+                val seasonTitle = anime.seasonTitle(index)
                 val hasVostfr = season.episodes.any { ep -> ep.languages.vo.players.isNotEmpty() }
                 val hasVf = season.episodes.any { ep -> ep.languages.vf.players.isNotEmpty() }
 
@@ -408,6 +439,7 @@ class FrAnime : ConfigurableParsedHttpAnimeSource<FrAnimePreferences>(
                 languages.map { lang ->
                     SAnime.create().apply {
                         title = seasonTitle
+                        rawTitle = anime.displayName()
                         // Shown by the app as a badge, so it stays visible however long the title is
                         language = lang.first
                         thumbnailUrl = anime.poster

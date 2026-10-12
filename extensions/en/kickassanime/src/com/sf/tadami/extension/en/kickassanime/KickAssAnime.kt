@@ -127,8 +127,10 @@ class KickAssAnime : ConfigurableParsedHttpAnimeSource<KickAssAnimePreferences>(
             .asCancelableObservable()
             .map { response ->
                 val data = parser.decodeFromString<AnimeInfoDto>(response.body.string())
+                val (display, bare) = titles(data.title, data.title_en, data.slug, data.type)
                 SAnime.create().apply {
-                    title = data.displayTitle()
+                    title = display
+                    rawTitle = bare
                     setUrlWithoutDomain("/${data.slug}")
                     data.poster?.let { thumbnailUrl = "$baseUrl/${it.url}" }
                     genres = data.genres
@@ -194,20 +196,28 @@ class KickAssAnime : ConfigurableParsedHttpAnimeSource<KickAssAnimePreferences>(
     // ================================ Utils ==================================
 
     private fun PopularItemDto.toSAnime(): SAnime {
-        val romaji = title
-        val english = title_en
+        val (display, bare) = titles(title, title_en, slug, type)
         val posterDto = poster
         val animeSlug = slug
         return SAnime.create().apply {
-            title = if (preferences.useEnglishTitles && !english.isNullOrBlank()) english else romaji
-            rawTitle = romaji
+            title = display
+            rawTitle = bare
             setUrlWithoutDomain("/$animeSlug")
             posterDto?.let { thumbnailUrl = "$baseUrl/${it.url}" }
         }
     }
 
-    private fun AnimeInfoDto.displayTitle(): String =
-        if (preferences.useEnglishTitles && !title_en.isNullOrBlank()) title_en!! else title
+    /**
+     * The title to show (romaji, or English with the preference), with the season first, and the bare romaji
+     * name as rawTitle: other sources and the app's search find "Kusuriya no Hitorigoto", not its "3rd Season".
+     */
+    private fun titles(romaji: String, english: String?, slug: String, type: String?): Pair<String, String> {
+        val useEnglish = preferences.useEnglishTitles && !english.isNullOrBlank()
+        val shown = if (useEnglish) english!! else romaji
+        val display = SeasonTitle.split(shown, if (useEnglish) romaji else english, slug, type).first
+        val bare = SeasonTitle.split(romaji, english, slug, type).second
+        return display to bare
+    }
 
     private fun String.parseStatus(): SAnimeStatus = when (this) {
         "finished_airing" -> SAnimeStatus.COMPLETED

@@ -176,9 +176,11 @@ class IAnimes : ConfigurableParsedHttpAnimeSource<IAnimesPreferences>(
         val language = LANGUAGE_SLUG_REGEX.find(href)?.groupValues?.get(1)?.uppercase()
             ?: card.select("td.card-info").lastOrNull()?.text()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
         val (name, entryLanguage) = splitLanguage(siteTitle, language)
+        val (displayTitle, bareTitle) = seasonFirst(name)
 
         return SAnime.create().apply {
-            title = name
+            title = displayTitle
+            rawTitle = bareTitle
             this.language = entryLanguage
             setUrlWithoutDomain(href)
             thumbnailUrl = card.selectFirst("div[style*=\"url(\"]")?.attr("style")
@@ -198,9 +200,11 @@ class IAnimes : ConfigurableParsedHttpAnimeSource<IAnimesPreferences>(
             ?: info["titre original"]
             ?: throw IOException("IAnimes: anime title not found on the page")
         val (name, entryLanguage) = splitLanguage(heading, language)
+        val (displayTitle, bareTitle) = seasonFirst(name)
 
         return SAnime.create().apply {
-            title = name
+            title = displayTitle
+            rawTitle = bareTitle
             this.language = entryLanguage
             thumbnailUrl = document.selectFirst("fieldset table.bordures img[src]")?.absUrl("src")
                 ?.takeIf { it.startsWith("http") }
@@ -448,6 +452,20 @@ class IAnimes : ConfigurableParsedHttpAnimeSource<IAnimesPreferences>(
         return name to (language ?: nameLanguage)
     }
 
+    /**
+     * The season first, as in the other sources: "Bungou Stray Dogs 2nd Season" -> ("Saison 2 - Bungou Stray Dogs",
+     * "Bungou Stray Dogs"), the bare name being the rawTitle (the site's search finds the name, not "Saison 2 - ...").
+     * Only an explicit season moves: a bare trailing number or roman numeral can be part of the name
+     * ("One Punch Man 3", "Brave 10", "Ranma 1/2", "Date A Live IV").
+     */
+    private fun seasonFirst(name: String): Pair<String, String> {
+        val match = TRAILING_SEASON_REGEX.find(name) ?: return name to name
+        val bare = name.substring(0, match.range.first).trim()
+        val season = match.groupValues[1].ifEmpty { match.groupValues[2] }.toIntOrNull()
+        if (bare.isEmpty() || season == null) return name to name
+        return "Saison $season - $bare" to bare
+    }
+
     /** Some titles are escaped twice by the site ("Paws &amp;amp; Palaces"). */
     private fun String.unescaped(): String = Parser.unescapeEntities(this, false)
 
@@ -464,6 +482,11 @@ class IAnimes : ConfigurableParsedHttpAnimeSource<IAnimesPreferences>(
         /** "X VOSTFR", "X (VF)", "X - Vostfr", "X [VO]" (a separator before the language is required) */
         private val TRAILING_LANGUAGE_REGEX = Regex(
             """[\s\-–—:|,]*[(\[]\s*(VOSTFR|VF|VO|DUB)\s*[)\]]\s*$|[\s\-–—:|,]+(VOSTFR|VF|VO|DUB)\s*$""",
+            RegexOption.IGNORE_CASE
+        )
+        /** "X 2nd Season", "X Season 2", "X - Saison 2", "X 2e saison": a number is required ("A3! SEASON AUTUMN" stays). */
+        private val TRAILING_SEASON_REGEX = Regex(
+            """[\s\-–—:|,]+(?:(\d+)(?:st|nd|rd|th|e|ème|eme)\s+(?:season|saison)|(?:season|saison)\s+(\d+))\s*$""",
             RegexOption.IGNORE_CASE
         )
         private val LANGUAGE_SLUG_REGEX = Regex("""manga=[^&]*-(vostfr|vf)(?:&|$)""", RegexOption.IGNORE_CASE)

@@ -114,7 +114,8 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         val hasNextPage = latestData.currentPage < latestData.lastPage
         val animeList = latestData.items.map { anime ->
             SAnime.create().apply {
-                title = anime.title
+                title = seasonFirst(anime.title)
+                rawTitle = anime.title
                 thumbnailUrl = anime.snapshot
                 val animeId = anime.id
                 rememberSession(animeId, anime.session)
@@ -149,7 +150,8 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         val searchData = json.decodeFromString<ResponseDto<SearchResultDto>>(jsonString)
         val animeList = searchData.items.map { anime ->
             SAnime.create().apply {
-                title = anime.title
+                title = seasonFirst(anime.title)
+                rawTitle = anime.title
                 thumbnailUrl = anime.poster
                 val animeId = anime.id
                 rememberSession(animeId, anime.session)
@@ -185,8 +187,11 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
 
     override fun animeDetailsParse(response: Response): SAnime {
         val document = response.asJsoup()
+        val siteTitle = document.selectFirst("div.title-wrapper > h1 > span")?.text()
+            ?: throw IOException("AnimePahe: anime title not found on the page")
         return SAnime.create().apply {
-            title = document.selectFirst("div.title-wrapper > h1 > span")!!.text()
+            title = seasonFirst(siteTitle)
+            rawTitle = siteTitle
             status = parseStatus(document.selectFirst("div.col-sm-4.anime-info p:contains(Status:) a")?.text())
             thumbnailUrl = document.selectFirst("div.anime-poster a")!!.attr("href")
             genres = document.select("div.anime-genre ul li").map { it.text() }
@@ -345,7 +350,8 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         sessions[animeId]?.let { (session, resolvedAt) ->
             if (System.currentTimeMillis() - resolvedAt < SESSION_CACHE_MILLIS) return session
         }
-        val session = searchQueries(anime.title).firstNotNullOfOrNull { searchSession(it, animeId) }
+        // rawTitle is the site's title: the search doesn't find "Season 2 - X" (older entries only have title)
+        val session = searchQueries(anime.rawTitle ?: anime.title).firstNotNullOfOrNull { searchSession(it, animeId) }
             ?: throw Exception(i18n.getString("anime_session_not_found"))
         sessions[animeId] = session to System.currentTimeMillis()
         return session
@@ -375,6 +381,18 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
         }
     }
 
+    /**
+     * The season first, as in the other sources: "Aoashi Season 2" -> "Season 2 - Aoashi", "Haikyu!! 2nd Season" ->
+     * "Season 2 - Haikyu!!", "Attack on Titan Season 3 Part 2" -> "Season 3 Part 2 - Attack on Titan". Only an
+     * explicit season at the end moves: "Kaiju No. 8", "Mob Psycho 100 II" or "86 Part 2" stay as they are.
+     */
+    private fun seasonFirst(siteTitle: String): String {
+        val match = SEASON_AT_END_REGEX.matchEntire(siteTitle.trim()) ?: return siteTitle
+        val (name, number, ordinal, part) = match.destructured
+        val season = "Season ${number.ifEmpty { ordinal }}" + if (part.isEmpty()) "" else " Part $part"
+        return "$season - $name"
+    }
+
     private fun Anime.getId() = url.substringAfterLast("?anime_id=").substringBefore("\"")
 
     private fun String.toDate(): Long {
@@ -388,6 +406,11 @@ class AnimePahe : ConfigurableParsedHttpAnimeSource<AnimePahePreferences>(
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
         }
         private val RESOLUTION_REGEX = Regex("""(\d{3,4})p""")
+        // "X Season 2", "X 2nd Season", "X Season 3 Part 2", also "X: Season 2" and "X - Season 2"
+        private val SEASON_AT_END_REGEX = Regex(
+            """^(.+?)(?::|\s+[–-])?\s+(?:Season\s+(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)\s+Season)(?:\s+Part\s+(\d{1,2}))?$""",
+            RegexOption.IGNORE_CASE,
+        )
         private const val SESSION_CACHE_MILLIS = 30 * 60 * 1000L
     }
 }

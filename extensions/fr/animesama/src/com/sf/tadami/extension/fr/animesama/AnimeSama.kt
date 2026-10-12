@@ -151,10 +151,30 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     override fun latestAnimeNextPageSelector(): String = throw Exception("Not used")
 
     override fun latestAnimeParse(response: Response): AnimesPage {
-        val document = response.asJsoup()
+        val cards = response.asJsoup().select(latestSelector())
+        val animes = cards.map { latestAnimeFromElement(it) }
 
-        val animes = document.select(latestSelector()).map { element ->
-            latestAnimeFromElement(element)
+        // A card only names the anime: its season comes from the anime's page, as in search and details,
+        // so that every screen gives the same title (one request per anime)
+        val pages = animes.map { animePath(it.url) }.distinct().parallelMap { path ->
+            path to runCatching { client.newCall(GET("$baseUrl$path", headers)).execute().use { it.asJsoup() } }
+                .onFailure { Log.w(TAG, "Could not load $path", it) }
+                .getOrNull()
+        }.toMap()
+
+        animes.zip(cards).forEach { (anime, card) ->
+            val page = pages[animePath(anime.url)]
+            val animeName = page?.selectFirst("h1")?.text()
+            val seasonName = page?.let { seasonNameOf(it, anime.url) }
+            if (animeName != null && seasonName != null) {
+                anime.title = seasonTitle(seasonName, animeName)
+                anime.rawTitle = animeName
+            } else {
+                // Page unreachable or season not listed yet: the card says "Saison 2 Episode 5"
+                card.selectFirst("span.info-text")?.text()?.substringBefore(" Episode")?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { anime.title = seasonTitle(it, anime.title) }
+            }
         }
 
         return AnimesPage(animes, false)
@@ -162,15 +182,14 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     override fun latestAnimeFromElement(element: Element): SAnime {
         val titleText = element.selectFirst("h2.card-title")?.text() ?: ""
-        val lang =
-            element.selectFirst("div.language-badge-top > img.flag-icon")?.attr("title")?.trim()
-                ?: ""
         val anime: SAnime = SAnime.create()
         anime.title = titleText
-        // Shown by the app as a badge, so it stays visible however long the title is
-        anime.language = lang.uppercase(Locale.getDefault()).ifBlank { null }
+        anime.rawTitle = titleText.ifBlank { null }
         anime.thumbnailUrl = element.selectFirst("img")?.attr("src")
         anime.setUrlWithoutDomain(element.attr("href").removeSuffix("/"))
+        // Shown by the app as a badge, so it stays visible however long the title is. From the url, as in
+        // search and details (the card's flag says "VASTFR" for /va)
+        anime.language = languageOf(anime.url)
         return anime
     }
 
@@ -203,40 +222,29 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 } != null
 
                 val pageRequests = Observable.fromIterable(animeList).flatMap { anime ->
-                    client.newCall(GET("$baseUrl${anime.url}"))
+                    client.newCall(GET("$baseUrl${anime.url}", headers))
                         .asCancelableObservable()
                         .map { response ->
                             val doc = response.asJsoup()
-                            val seasonRegex = Regex(
-                                "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
-                                RegexOption.MULTILINE
-                            )
-                            val scripts =
-                                doc.select("h2 + p + div > script, h2 + div > script").toString()
+                            val animeName = doc.selectFirst("h1")?.text() ?: anime.title
 
-                            val seasons = seasonRegex.findAll(scripts)
-                                .fold(mutableListOf<Triple<String, String, String>>()) { acc, match ->
-                                    val (seasonName, seasonUrl) = match.destructured
-
-                                    VOICES_VALUES.parallelMap { voice ->
-                                        getLangUrl(
-                                            anime = anime,
-                                            seasonName = seasonName,
-                                            seasonUrl = seasonUrl,
-                                            lang = voice
-                                        )?.let {
-                                            acc.add(it)
-                                        }
-                                    }
-                                    acc
-                                }
-
+                            val seasons = seasonPanels(doc).flatMap { (seasonName, seasonUrl) ->
+                                VOICES_VALUES.parallelMap { voice ->
+                                    getLangUrl(
+                                        anime = anime,
+                                        seasonName = seasonName,
+                                        seasonUrl = seasonUrl,
+                                        lang = voice
+                                    )
+                                }.filterNotNull()
+                            }
 
                             seasons.map { (seasonName, seasonUrl, language) ->
                                 val animeSeason = SAnime.create()
                                 animeSeason.url = "${anime.url}/$seasonUrl"
                                 animeSeason.thumbnailUrl = anime.thumbnailUrl
-                                animeSeason.title = "$seasonName - ${anime.title}"
+                                animeSeason.title = seasonTitle(seasonName, animeName)
+                                animeSeason.rawTitle = animeName
                                 animeSeason.language = language
                                 animeSeason
                             }
@@ -319,27 +327,17 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     private fun animeDetailsParse(document: Document, dbAnime: Anime): SAnime {
         val anime = SAnime.create()
         val animeTitle = document.selectFirst("h1")?.text()
-        val seasonRegex = Regex(
-            "^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)",
-            RegexOption.MULTILINE
-        )
+        val seasonName = seasonNameOf(document, dbAnime.url)
 
-        val scripts = document.select("h2 + p + div > script, h2 + div > script").toString()
-        val foundSeason = seasonRegex.findAll(scripts).find { match ->
-            val (_, seasonUrl) = match.destructured
-            dbAnime.url.contains(seasonUrl.removeSuffix("/").substringBeforeLast("/") + "/")
+        if (animeTitle != null && seasonName != null) {
+            anime.title = seasonTitle(seasonName, animeTitle)
+            // The untouched anime name, for search and migration (the title starts with the season)
+            anime.rawTitle = animeTitle
+            anime.language = languageOf(dbAnime.url)
+        } else {
+            // No panel for this url (yet), or not the anime's page (a 404 "Page introuvable"): keep what we had
+            anime.title = dbAnime.title
         }
-
-        var seasonName = dbAnime.title
-        if (foundSeason != null) {
-            val (name, _) = foundSeason.destructured
-            seasonName = "$name - $animeTitle"
-            anime.language = dbAnime.url.removeSuffix("/").substringAfterLast("/").uppercase()
-        }
-
-        anime.title = seasonName
-        // Keep the untouched anime name for search & migration (title is rewritten with the season).
-        anime.rawTitle = animeTitle
         anime.description =
             document.selectFirst("#synopsisText")?.text()
         anime.genres = document.select(".genres-wrap span").map { it.text().trim() }
@@ -373,6 +371,33 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     override fun animeDetailsParse(document: Document): SAnime = throw Exception("Not used")
 
+
+    // ============================== Seasons ===============================
+
+    /** The season panels of an anime page: panneauAnime("Saison 2", "saison2/vostfr") gives ("Saison 2", "saison2/vostfr"). */
+    private fun seasonPanels(document: Document): List<Pair<String, String>> {
+        val scripts = document.select("h2 + p + div > script, h2 + div > script").toString()
+        return SEASON_REGEX.findAll(scripts).map { it.groupValues[1] to it.groupValues[2] }.toList()
+    }
+
+    /** The name of the season an entry (/catalogue/<anime>/<season>/<lang>) is about, from its anime's page. */
+    private fun seasonNameOf(document: Document, entryUrl: String): String? {
+        val season = entryUrl.removeSuffix("/").substringBeforeLast("/").substringAfterLast("/")
+        return seasonPanels(document)
+            .firstOrNull { (_, url) -> url.removeSuffix("/").substringBeforeLast("/") == season }
+            ?.first
+    }
+
+    /** The season first, on every screen: "Saison 2 - Overgeared". */
+    private fun seasonTitle(seasonName: String, animeName: String) = "$seasonName - $animeName"
+
+    /** /catalogue/<anime>/<season>/<lang> to /catalogue/<anime> */
+    private fun animePath(entryUrl: String) =
+        entryUrl.removeSuffix("/").substringBeforeLast("/").substringBeforeLast("/")
+
+    /** /catalogue/<anime>/<season>/vostfr to "VOSTFR" */
+    private fun languageOf(entryUrl: String) =
+        entryUrl.removeSuffix("/").substringAfterLast("/").uppercase(Locale.ROOT).ifBlank { null }
 
     // ============================== Anime Episodes ===============================
     override fun episodesListSelector(): String = throw Exception("Not used")
@@ -697,6 +722,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     companion object {
         private const val TAG = "AnimeSama"
+
+        private val SEASON_REGEX = Regex("^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)", RegexOption.MULTILINE)
 
         private const val ANSEMBED_HOST = "ansembed.net"
         private const val ANSEMBED_SERVER = "AnsEmbed"
