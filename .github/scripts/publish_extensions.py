@@ -9,14 +9,16 @@ Publishes built extensions into the extensions repo (tadamiorg/tadami-extensions
                                   --aapt2 <aapt2> [--apksigner <apksigner>] [--dexdump <dexdump>]
                                   [--summary <file>] [--commit-message <file>]
         For each built extension: copies its APK (replacing the previous one) and its icon into the repo, and
-        adds or replaces its entry in index.json and index.min.json. The other entries of each index are left
-        as they are, including the extensions left out of it on purpose.
+        adds or replaces its entry in index.json and index.min.json, with the sha256 and size of the APK the app
+        checks its download against. The other entries of each index are left as they are, including the
+        extensions left out of it on purpose.
 
 Refuses to publish an APK that the app couldn't install as an update (same or lower version code than the
 published one, or signed with another key), or that uses extension API members its lib version doesn't cover
 (older apps would load it and crash).
 """
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -91,6 +93,15 @@ def source_info(module):
             )
         found[key] = values[0]
     return found
+
+
+def file_digest(path):
+    """The hex SHA-256 and the size in bytes of the file at path."""
+    sha256 = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1 << 16), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest(), path.stat().st_size
 
 
 def signer_digests(apksigner, apk):
@@ -214,7 +225,10 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None):
     for lang, ext, module, apk, info, source, previous, old_apks in plans:
         for old in old_apks:
             old.unlink()
-        shutil.copyfile(apk, repo / "apk" / apk.name)
+        published = repo / "apk" / apk.name
+        shutil.copyfile(apk, published)
+        # Of the file as published, signed: what the app downloads
+        sha256, size = file_digest(published)
         icon = module / ICON
         if icon.exists():
             shutil.copyfile(icon, repo / "icon" / f"{info['pkg']}.png")
@@ -226,6 +240,8 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None):
             "lang": lang,
             "code": info["code"],
             "version": info["version"],
+            "sha256": sha256,
+            "size": size,
             "sources": [
                 {
                     "name": source["name"],
