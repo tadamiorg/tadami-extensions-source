@@ -335,7 +335,22 @@ class IAnimes : ConfigurableParsedHttpAnimeSource<IAnimesPreferences>(
         }.flatten()
 
         if (sources.isEmpty()) throw IOException(i18n.getString("error_no_streams"))
-        return sources
+        return sources.numberDuplicates()
+    }
+
+    /**
+     * Several players of a same host give streams of the same name ("Voe - 1080p" twice), which the app
+     * can't tell apart: they're numbered in the page's order ("Voe - 1080p #1", "Voe - 1080p #2").
+     */
+    private fun List<StreamSource>.numberDuplicates(): List<StreamSource> {
+        val counts = groupingBy { it.fullName }.eachCount()
+        val instances = mutableMapOf<String, Int>()
+        return map { source ->
+            if ((counts[source.fullName] ?: 0) < 2) return@map source
+            val instance = (instances[source.fullName] ?: 0) + 1
+            instances[source.fullName] = instance
+            source.copy(fullName = "${source.fullName} #$instance")
+        }
     }
 
     private enum class Host { VIDMOLY, VOE, STREAMTAPE, MAILRU, DOOD, LULUSTREAM, VIDARA, VIDSONIC, ODYSEE, HGCLOUD, UNKNOWN }
