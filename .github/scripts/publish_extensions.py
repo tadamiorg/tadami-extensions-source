@@ -9,17 +9,20 @@ Publishes built extensions into the extensions repo (tadamiorg/tadami-extensions
                                   --aapt2 <aapt2> [--apksigner <apksigner>] [--dexdump <dexdump>]
                                   [--summary <file>] [--commit-message <file>]
                                   [--repo-name <name> [--repo-short-name <name>] [--repo-website <url>]]
+                                  [--allow-id-change]
         For each built extension: copies its APK (replacing the previous one) and its icon into the repo, and
         adds or replaces its entry in index.json and index.min.json, with the sha256 and size of the APK the app
         checks its download against. The other entries of each index are left as they are, including the
-        extensions left out of it on purpose.
+        extensions left out of it on purpose. The source IDs come from the build (build/outputs/tadami/
+        sources.json, written by common.gradle), or from `sourceId = N` in the code for an older build.
         With --repo-name (and --apksigner), also writes repo.json, the repo's metadata as Mihon reads it:
         {"meta": {"name", "shortName", "website", "signingKeyFingerprint"}}, the fingerprint being the SHA-256 of
         the certificate the released APKs are signed with.
 
 Refuses to publish an APK that the app couldn't install as an update (same or lower version code than the
-published one, or signed with another key), or that uses extension API members its lib version doesn't cover
-(older apps would load it and crash).
+published one, or signed with another key), that uses extension API members its lib version doesn't cover
+(older apps would load it and crash), or whose sources lost a published ID (users' libraries are keyed by it),
+unless --allow-id-change.
 """
 import argparse
 import hashlib
@@ -84,11 +87,36 @@ def badging(aapt2, apk):
     return {"pkg": package.group(1), "code": int(package.group(2)), "version": package.group(3), "name": label.group(1)}
 
 
-def source_info(module):
-    """The extension's source, as declared in its code: sourceId, name and DEFAULT_BASE_URL."""
+SOURCES_JSON = Path("build") / "outputs" / "tadami" / "sources.json"
+
+
+def built_source_ids(module, pkg):
+    """The IDs of the extension's sources, as its build wrote them: [(class, id)], None for an older build."""
+    path = module / SOURCES_JSON
+    if not path.exists():
+        return None
+    built = json.loads(path.read_text(encoding="utf-8"))
+    if built.get("pkg") != pkg:
+        raise PublishError(f"{path.relative_to(SOURCE_ROOT)} is of {built.get('pkg')}, not {pkg}: rebuild it")
+    sources = [(source["class"], source["id"]) for source in built["sources"]]
+    if any(not source_id for _, source_id in sources):
+        raise PublishError(f"{path.relative_to(SOURCE_ROOT)} has a source without ID: rebuild it")
+    return sources
+
+
+def source_info(module, pkg):
+    """The extension's source: its ID from the build (sourceId in the code without one), and its name and
+    DEFAULT_BASE_URL as declared in its code."""
     code = "\n".join(p.read_text(encoding="utf-8") for p in sorted((module / "src").rglob("*.kt")))
     found = {}
+    built = built_source_ids(module, pkg)
+    if built is not None:
+        if len(built) != 1:
+            raise PublishError(f"{module.relative_to(SOURCE_ROOT)}: {len(built)} sources, the index entry takes one")
+        found["class"], found["id"] = built[0]
     for key, pattern in (("id", SOURCE_ID), ("name", SOURCE_NAME), ("baseUrl", BASE_URL)):
+        if key in found:
+            continue
         values = sorted(set(pattern.findall(code)))
         if len(values) != 1:
             raise PublishError(
@@ -201,7 +229,7 @@ def repo_meta(repo, signers, name, short_name, website):
     return {"meta": {key: value for key, value in meta.items() if value}}
 
 
-def publish(extensions, repo, aapt2, apksigner, dexdump=None, meta=None):
+def publish(extensions, repo, aapt2, apksigner, dexdump=None, meta=None, allow_id_change=False):
     """meta: name, short_name and website of repo.json, None not to write it."""
     indexes = {name: read_index(repo / name) for name in INDEXES}
     # Version checks against whichever index lists the extension, with the highest code
@@ -219,7 +247,7 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None, meta=None):
         module = EXTENSIONS_DIR / lang / ext
         apk = built_apk(module)
         info = badging(aapt2, apk)
-        source = source_info(module)
+        source = source_info(module, info["pkg"])
         previous = by_pkg.get(info["pkg"])
         # The previous APK of this extension, listed or not (some are published without an index entry)
         old_apks = sorted(p for p in (repo / "apk").glob(f"tadami-{lang}.{ext}-v*.apk") if p.name != apk.name)
@@ -229,6 +257,18 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None, meta=None):
                 f"{lang}.{ext}: version code {info['code']} is not above the published {previous['code']}, "
                 "the app wouldn't see it as an update. Bump extVersionCode."
             )
+        lost_ids = sorted({str(s["id"]) for s in (previous or {}).get("sources") or []} - {source["id"]})
+        if lost_ids:
+            message = (
+                f"{lang}.{ext}: its source has ID {source['id']} instead of the published {', '.join(lost_ids)}: "
+                "the users' library, history and settings of a source are keyed by its ID and would be lost."
+            )
+            if not allow_id_change:
+                raise PublishError(
+                    f"{message} Keep the published ID (sourceId = <ID> in the code), or pass --allow-id-change "
+                    "if it's on purpose."
+                )
+            print(f"::warning::{message}", file=sys.stderr)
         if apksigner:
             new_signers = signer_digests(apksigner, apk)
             signers.update(new_signers)
@@ -310,6 +350,8 @@ def main():
     parser.add_argument("--repo-name", help="Writes repo.json with this repo name")
     parser.add_argument("--repo-short-name", help="Short repo name of repo.json, the name by default")
     parser.add_argument("--repo-website", help="Website of repo.json")
+    parser.add_argument("--allow-id-change", action="store_true",
+                        help="Publishes an extension whose source lost its published ID (its users lose their entries)")
     args = parser.parse_args()
 
     try:
@@ -322,7 +364,7 @@ def main():
         meta = None
         if args.repo_name:
             meta = {"name": args.repo_name, "short_name": args.repo_short_name, "website": args.repo_website}
-        released = publish(extensions, args.repo, args.aapt2, args.apksigner, args.dexdump, meta)
+        released = publish(extensions, args.repo, args.aapt2, args.apksigner, args.dexdump, meta, args.allow_id_change)
     except PublishError as e:
         print(f"::error::{e}", file=sys.stderr)
         sys.exit(1)

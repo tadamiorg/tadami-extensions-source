@@ -3,7 +3,8 @@
 # the fingerprint of the key the extensions are signed with, that the app offers to trust when the repo is added.
 #
 # Run it from the Actions tab ("Run workflow") with the extensions to release, e.g. "en.animepahe fr.franime".
-# Bump extVersionCode first: a version code that isn't above the published one is refused.
+# Bump extVersionCode first: a version code that isn't above the published one is refused. So is a source whose
+# ID isn't the published one any more (users' libraries are keyed by it), unless "allow_id_change" is ticked.
 #
 # Secrets (Settings > Secrets and variables > Actions):
 #   EXTENSIONS_KEYSTORE_BASE64     the keystore signing the published extensions, base64-encoded (KEY_FILE in .env)
@@ -31,6 +32,10 @@ on:
         description: Build and check everything, but don't push to the extensions repo
         type: boolean
         default: false
+      allow_id_change:
+        description: Publish even if a source lost its published ID (its users lose their library entries)
+        type: boolean
+        default: false
 
 # Two releases at once would race on the index
 concurrency:
@@ -51,6 +56,16 @@ jobs:
     steps:
       - name: Check out the extensions source
         uses: actions/checkout@v4
+
+      # The source IDs are generated from tadami.repoId: a copy keeping the official one would give its new
+      # sources the IDs the official repo's sources of the same package and class get
+      - name: Check the repo ID
+        run: |
+          repo_id=$(sed -n 's/^tadami\.repoId=//p' gradle.properties | tr -d '[:space:]')
+          if [ "$repo_id" = "tadamiorg/tadami-extensions-source" ] && [ "$GITHUB_REPOSITORY" != "tadamiorg/tadami-extensions-source" ]; then
+            echo "::error::tadami.repoId in gradle.properties is the official repo's: set it to $GITHUB_REPOSITORY before releasing"
+            exit 1
+          fi
 
       - name: Check the requested extensions
         id: extensions
@@ -83,9 +98,10 @@ jobs:
           ALIAS: ${{ secrets.EXTENSIONS_KEY_ALIAS }}
           TASKS: ${{ steps.extensions.outputs.tasks }}
         # settings.gradle.kts only loads the extensions listed in CI_EXTENSIONS. gradlew isn't executable in git.
+        # The builds write the source IDs the release reads (build/outputs/tadami/sources.json).
         run: |
           chmod +x ./gradlew
-          ./gradlew $TASKS --console=plain
+          ./gradlew checkSourceIdFormula $TASKS --console=plain
 
       - name: Upload the APKs
         uses: actions/upload-artifact@v4
@@ -107,9 +123,11 @@ jobs:
           REPO_NAME: ${{ vars.EXTENSIONS_REPO_NAME || (github.repository_owner == 'tadamiorg' && 'Tadami' || github.repository_owner) }}
           REPO_SHORT_NAME: ${{ vars.EXTENSIONS_REPO_SHORT_NAME }}
           REPO_WEBSITE: ${{ vars.EXTENSIONS_REPO_WEBSITE || format('https://github.com/{0}', github.repository) }}
+          ALLOW_ID_CHANGE: ${{ inputs.allow_id_change && '--allow-id-change' || '' }}
         run: |
           build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          python3 .github/scripts/publish_extensions.py publish \
+          # shellcheck disable=SC2086 # ALLOW_ID_CHANGE is empty or one flag
+          python3 .github/scripts/publish_extensions.py publish $ALLOW_ID_CHANGE \
             --extensions "$CI_EXTENSIONS" \
             --repo extensions-repo \
             --aapt2 "$build_tools/aapt2" \
