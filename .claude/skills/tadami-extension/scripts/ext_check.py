@@ -4,13 +4,16 @@ Pre-release checks for Tadami extensions, run from anywhere inside tadami-extens
 
     ext_check.py ids [--published <dir | base URL>]
         Source ids in use across extensions/*/* and by published extensions that have no source
-        folder anymore, and the next free one.
+        folder anymore. A new source doesn't pick one: it uses the generated BuildConfig.SOURCE_ID.
 
     ext_check.py check <lang>.<name> [--published <extensions repo checkout dir | base URL>]
         Checks what the "Release extensions" workflow relies on (it generates the index entry from the
-        code, see .github/scripts/publish_extensions.py, whose regexes are mirrored here):
-        - exactly one `sourceId = N`, `override val name: String = "X"` and `DEFAULT_BASE_URL = "..."`
-        - a source id no other extension uses
+        code and the build, see .github/scripts/publish_extensions.py, whose regexes are mirrored here):
+        - exactly one source id declaration, `sourceId = N` (a released source) or
+          `sourceId = BuildConfig.SOURCE_ID` (generated, see common.gradle), and exactly one
+          `override val name: String = "X"` and `DEFAULT_BASE_URL = "..."`
+        - a source id no other extension uses (the id of a build, build/outputs/tadami/sources.json, when
+          there is one)
         - pkgNameSuffix == "<lang>.<name>", AndroidManifest.xml, res/mipmap-xhdpi/ic_launcher.png
         - extVersionCode above the published code (index.json and index.min.json of the published repo,
           GitHub by default)
@@ -27,6 +30,9 @@ from pathlib import Path
 
 # Same patterns as .github/scripts/publish_extensions.py: keep them in sync
 SOURCE_ID = re.compile(r"\bsourceId\s*=\s*(\d+)")
+# A generated id, as common.gradle reads it
+GENERATED_ID = re.compile(r"(?:\bsourceId|\boverride\s+val\s+id)\s*(?::\s*Long\s*)?=\s*BuildConfig\.(SOURCE_ID\w*)")
+SOURCES_JSON = Path("build") / "outputs" / "tadami" / "sources.json"
 SOURCE_NAME = re.compile(r"override\s+val\s+name\s*(?::\s*String)?\s*=\s*\"([^\"]+)\"")
 BASE_URL = re.compile(r"\bDEFAULT_BASE_URL\s*=\s*\"([^\"]+)\"")
 VERSION_CODE = re.compile(r"set\(\s*\"extVersionCode\"\s*,\s*(\d+)\s*\)")
@@ -54,10 +60,20 @@ def module_code(module):
     return "\n".join(p.read_text(encoding="utf-8") for p in sorted((module / "src").rglob("*.kt")))
 
 
+def built_ids(module):
+    """The source ids of the module's last build (common.gradle writes them), None when it wasn't built."""
+    path = module / SOURCES_JSON
+    if not path.exists():
+        return None
+    return [source["id"] for source in json.loads(path.read_text(encoding="utf-8"))["sources"] if source["id"]]
+
+
 def ids_in_use(root):
+    """Literal ids, and the generated ones of the built modules."""
     used = {}
     for module in modules(root):
-        for source_id in set(SOURCE_ID.findall(module_code(module))):
+        ids = set(SOURCE_ID.findall(module_code(module))) | set(built_ids(module) or [])
+        for source_id in ids:
             used.setdefault(int(source_id), []).append(f"{module.parent.name}.{module.name}")
     return used
 
@@ -95,7 +111,23 @@ def check(root, name, published_source):
     problems, notes = [], []
     code = module_code(module)
     found = {}
-    for key, pattern in (("sourceId", SOURCE_ID), ("name", SOURCE_NAME), ("DEFAULT_BASE_URL", BASE_URL)):
+    literal_ids = sorted(set(SOURCE_ID.findall(code)))
+    generated_ids = sorted(set(GENERATED_ID.findall(code)))
+    if len(literal_ids) + len(generated_ids) != 1:
+        problems.append(
+            "expected exactly one source id declaration, sourceId = N (a released source) or "
+            f"sourceId = BuildConfig.SOURCE_ID (a new one), found {literal_ids + generated_ids or 'none'}"
+        )
+    elif literal_ids:
+        found["sourceId"] = literal_ids[0]
+    else:
+        built = built_ids(module)
+        if built:
+            found["sourceId"] = built[0]
+            notes.append(f"generated source id (BuildConfig.{generated_ids[0]}), as last built")
+        else:
+            notes.append(f"generated source id (BuildConfig.{generated_ids[0]}): build the extension to check it")
+    for key, pattern in (("name", SOURCE_NAME), ("DEFAULT_BASE_URL", BASE_URL)):
         values = sorted(set(pattern.findall(code)))
         if len(values) == 1:
             found[key] = values[0]
@@ -173,7 +205,7 @@ def check(root, name, published_source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    ids_parser = sub.add_parser("ids", help="source ids in use and the next free one")
+    ids_parser = sub.add_parser("ids", help="source ids in use")
     ids_parser.add_argument("--published", default=PUBLISHED_REPO,
                             help="published repo: local checkout dir or base URL (default: GitHub)")
     check_parser = sub.add_parser("check", help="pre-release checks for one or more extensions")
@@ -197,8 +229,8 @@ def main():
         for source_id in sorted(used):
             flag = "  <- DUPLICATE" if len(used[source_id]) > 1 else ""
             print(f"{source_id:>5}  {', '.join(used[source_id])}{flag}")
-        # Small ids are what existing extensions use; pick the next one after the largest
-        print(f"next free id: {max(used) + 1 if used else 1}")
+        # The released sources keep their small literal ids; a new one never picks a number
+        print("new source: sourceId = BuildConfig.SOURCE_ID, generated from tadami.repoId, the package and the class")
         return
 
     results = [check(root, name, args.published) for name in args.extensions]
