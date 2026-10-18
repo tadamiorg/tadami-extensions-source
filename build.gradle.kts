@@ -15,12 +15,6 @@ buildscript {
 }
 
 allprojects {
-    repositories {
-        mavenCentral()
-        google()
-        maven(url = "https://jitpack.io")
-    }
-
     // Use JVM Toolchain to ensure Java and Kotlin tasks use the same JVM target (17).
     // This resolves "Inconsistent JVM Target Compatibility" errors.
     plugins.withType<org.jetbrains.kotlin.gradle.plugin.KotlinBasePluginWrapper> {

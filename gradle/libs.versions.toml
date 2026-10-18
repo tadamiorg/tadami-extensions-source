@@ -11,15 +11,10 @@ coroutines_version = "1.11.0"
 injekt_version = "91edab2317"
 # RXJAVA3
 rxjava3_version = "3.1.12"
-rxjava3_android_version = "3.0.2"
 # Scraping stuff
 jsoup_version = "1.22.2"
 okhttp_version = "5.4.0"
-quickjs_version = "0.9.2"
 jspecify_version = "1.0.0"
-# Extensions Api
-datastore_version = "1.2.1"
-navigation-version = "2.9.8"
 
 [libraries]
 # Gradle
@@ -43,17 +38,17 @@ injekt-core = { module = "com.github.mihonapp:injekt", version.ref = "injekt_ver
 
 # RXJAVA3
 rxjava3 = { group = "io.reactivex.rxjava3", name = "rxjava", version.ref = "rxjava3_version" }
-rxjava3-rxandroid = { group = "io.reactivex.rxjava3", name = "rxandroid", version.ref = "rxjava3_android_version" }
 
 # Scraping stuff
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup_version" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp_version" }
-quickjs = { module = "app.cash.quickjs:quickjs-android", version.ref = "quickjs_version" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify_version" }
 
-# Extensions Api
-datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore_version" }
-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation-version" }
+# Extension API (extensions-lib), compileOnly: the app provides it at runtime. One entry per lib
+# version, picked by the extension's apiVersion in common.gradle
+tadami-lib-v1_6 = "com.github.tadamiorg:tadami:lib-1.6.0"
+# Not released yet: only resolves with -Ptadami.localLib (see settings.gradle.kts)
+tadami-lib-v1_7 = "com.github.tadamiorg:tadami:lib-1.7.0"
 
 [bundles]
 common = [
@@ -65,21 +60,9 @@ common = [
     "kotlin-json-okio",
     "jsoup",
     "okhttp",
-    "quickjs",
     "jspecify",
     "coroutines-core",
     "coroutines-android"
-]
-api = [
-    "okhttp",
-    "rxjava3",
-    "rxjava3-rxandroid",
-    "jsoup",
-    "injekt-core",
-    "datastore",
-    "kotlin-json",
-    "navigation-compose",
-    "jspecify"
 ]
 
 [plugins]

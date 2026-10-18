@@ -15,15 +15,10 @@ android {
 
 }
 
-repositories {
-    mavenCentral()
-}
-
-
 val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()
 
 dependencies {
-    compileOnly(project(":api"))
+    compileOnly(libs.tadami.lib.v1.get6())
     compileOnly(libs.bundles.common)
     implementation(project(":lib:playlist-utils"))
 }

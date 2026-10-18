@@ -1,5 +1,4 @@
 include(":core")
-include(":api")
 
 // Load all modules under /lib
 File(rootDir, "lib").eachDir { include("lib:${it.name}") }
@@ -67,6 +66,13 @@ fun File.eachDir(block: (File) -> Unit) {
 }
 
 dependencyResolutionManagement {
+    // Every module's repositories. JitPack serves extensions-lib (com.github.tadamiorg:tadami) and injekt
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        mavenCentral()
+        google()
+        maven(url = "https://jitpack.io")
+    }
     versionCatalogs {
         create("build") {
             from(files("gradle/build.versions.toml"))

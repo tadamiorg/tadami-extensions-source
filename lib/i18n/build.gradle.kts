@@ -15,11 +15,6 @@ android {
 
 }
 
-repositories {
-    mavenCentral()
-}
-
-
 val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()
 
 dependencies {
