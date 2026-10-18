@@ -1,5 +1,6 @@
 # Builds the chosen extensions and publishes them to the extensions repo (EXTENSIONS_REPO below): APK, icon and
-# index entry of each, the other extensions are left untouched.
+# index entry of each, the other extensions are left untouched. Also writes the repo's repo.json, its name and
+# the fingerprint of the key the extensions are signed with, that the app offers to trust when the repo is added.
 #
 # Run it from the Actions tab ("Run workflow") with the extensions to release, e.g. "en.animepahe fr.franime".
 # Bump extVersionCode first: a version code that isn't above the published one is refused.
@@ -13,6 +14,10 @@
 # Variables (same page, Variables tab), optional, for a fork or a copy of this template publishing its own repo:
 #   EXTENSIONS_REPO                the repo to publish to, as <owner>/<repo>, pushed to on its default branch.
 #                                  tadamiorg/tadami-extensions for tadamiorg, <owner>/tadami-extensions otherwise
+#   EXTENSIONS_REPO_NAME           the repo name in repo.json: Tadami for tadamiorg, the owner otherwise (the app
+#                                  doesn't show a name containing "tadami", but the official repo's own)
+#   EXTENSIONS_REPO_SHORT_NAME     its short name (the name)
+#   EXTENSIONS_REPO_WEBSITE        its website (this repo on GitHub)
 name: Release extensions
 
 on:
@@ -98,6 +103,10 @@ jobs:
           path: extensions-repo
 
       - name: Add the extensions to the repo
+        env:
+          REPO_NAME: ${{ vars.EXTENSIONS_REPO_NAME || (github.repository_owner == 'tadamiorg' && 'Tadami' || github.repository_owner) }}
+          REPO_SHORT_NAME: ${{ vars.EXTENSIONS_REPO_SHORT_NAME }}
+          REPO_WEBSITE: ${{ vars.EXTENSIONS_REPO_WEBSITE || format('https://github.com/{0}', github.repository) }}
         run: |
           build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           python3 .github/scripts/publish_extensions.py publish \
@@ -107,7 +116,10 @@ jobs:
             --apksigner "$build_tools/apksigner" \
             --dexdump "$build_tools/dexdump" \
             --summary "$GITHUB_STEP_SUMMARY" \
-            --commit-message "$RUNNER_TEMP/commit-message.txt"
+            --commit-message "$RUNNER_TEMP/commit-message.txt" \
+            --repo-name "$REPO_NAME" \
+            --repo-short-name "$REPO_SHORT_NAME" \
+            --repo-website "$REPO_WEBSITE"
           git -C extensions-repo status --short
 
       - name: Push to the extensions repo

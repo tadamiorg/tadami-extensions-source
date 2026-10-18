@@ -8,10 +8,14 @@ Publishes built extensions into the extensions repo (tadamiorg/tadami-extensions
     publish_extensions.py publish --extensions "en.animepahe fr.franime" --repo <extensions repo checkout>
                                   --aapt2 <aapt2> [--apksigner <apksigner>] [--dexdump <dexdump>]
                                   [--summary <file>] [--commit-message <file>]
+                                  [--repo-name <name> [--repo-short-name <name>] [--repo-website <url>]]
         For each built extension: copies its APK (replacing the previous one) and its icon into the repo, and
         adds or replaces its entry in index.json and index.min.json, with the sha256 and size of the APK the app
         checks its download against. The other entries of each index are left as they are, including the
         extensions left out of it on purpose.
+        With --repo-name (and --apksigner), also writes repo.json, the repo's metadata as Mihon reads it:
+        {"meta": {"name", "shortName", "website", "signingKeyFingerprint"}}, the fingerprint being the SHA-256 of
+        the certificate the released APKs are signed with.
 
 Refuses to publish an APK that the app couldn't install as an update (same or lower version code than the
 published one, or signed with another key), or that uses extension API members its lib version doesn't cover
@@ -176,7 +180,28 @@ def upsert(index, entry):
     index.append(entry)
 
 
-def publish(extensions, repo, aapt2, apksigner, dexdump=None):
+REPO_JSON = "repo.json"
+
+
+def repo_meta(repo, signers, name, short_name, website):
+    """The content of repo.json, refused if the APKs aren't signed with the key it already names."""
+    if len(signers) != 1:
+        raise PublishError(f"repo.json needs the released APKs signed with one key, found {len(signers)}")
+    fingerprint = signers.pop()
+    path = repo / REPO_JSON
+    if path.exists():
+        known = json.loads(path.read_text(encoding="utf-8-sig")).get("meta", {}).get("signingKeyFingerprint")
+        if known and known.replace(":", "").lower() != fingerprint:
+            raise PublishError(
+                f"The APKs are signed with {fingerprint}, not the {known} key repo.json names: "
+                "users who trusted the repo would refuse them. Check the signing secrets."
+            )
+    meta = {"name": name, "shortName": short_name or name, "website": website, "signingKeyFingerprint": fingerprint}
+    return {"meta": {key: value for key, value in meta.items() if value}}
+
+
+def publish(extensions, repo, aapt2, apksigner, dexdump=None, meta=None):
+    """meta: name, short_name and website of repo.json, None not to write it."""
     indexes = {name: read_index(repo / name) for name in INDEXES}
     # Version checks against whichever index lists the extension, with the highest code
     by_pkg = {}
@@ -188,6 +213,7 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None):
 
     # Every extension is checked before any file changes, so a refusal leaves the repo untouched
     plans = []
+    signers = set()
     for lang, ext in extensions:
         module = EXTENSIONS_DIR / lang / ext
         apk = built_apk(module)
@@ -204,6 +230,7 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None):
             )
         if apksigner:
             new_signers = signer_digests(apksigner, apk)
+            signers.update(new_signers)
             for old in old_apks:
                 if signer_digests(apksigner, old) != new_signers:
                     raise PublishError(
@@ -218,6 +245,11 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None):
             print(f"::warning::{lang}.{ext}: no dexdump, the lib version wasn't checked against the API it uses",
                   file=sys.stderr)
         plans.append((lang, ext, module, apk, info, source, previous, old_apks))
+    repo_json = None
+    if meta:
+        if not apksigner:
+            raise PublishError("repo.json needs --apksigner, to read the signing key fingerprint")
+        repo_json = repo_meta(repo, signers, **meta)
 
     (repo / "apk").mkdir(exist_ok=True)
     (repo / "icon").mkdir(exist_ok=True)
@@ -259,6 +291,8 @@ def publish(extensions, repo, aapt2, apksigner, dexdump=None):
 
     for name, index in indexes.items():
         write_index(repo / name, index)
+    if repo_json:
+        (repo / REPO_JSON).write_text(json.dumps(repo_json, ensure_ascii=False, indent="\t") + "\n", encoding="utf-8")
     return released
 
 
@@ -272,6 +306,9 @@ def main():
     parser.add_argument("--dexdump", help="Checks the lib version covers the extension API the APK uses")
     parser.add_argument("--summary", type=Path, help="Markdown summary to append to (GITHUB_STEP_SUMMARY)")
     parser.add_argument("--commit-message", type=Path, help="Where to write the extensions repo commit message")
+    parser.add_argument("--repo-name", help="Writes repo.json with this repo name")
+    parser.add_argument("--repo-short-name", help="Short repo name of repo.json, the name by default")
+    parser.add_argument("--repo-website", help="Website of repo.json")
     args = parser.parse_args()
 
     try:
@@ -281,7 +318,10 @@ def main():
             return
         if not args.repo or not args.aapt2:
             raise PublishError("publish needs --repo and --aapt2")
-        released = publish(extensions, args.repo, args.aapt2, args.apksigner, args.dexdump)
+        meta = None
+        if args.repo_name:
+            meta = {"name": args.repo_name, "short_name": args.repo_short_name, "website": args.repo_website}
+        released = publish(extensions, args.repo, args.aapt2, args.apksigner, args.dexdump, meta)
     except PublishError as e:
         print(f"::error::{e}", file=sys.stderr)
         sys.exit(1)
