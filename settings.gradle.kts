@@ -5,6 +5,12 @@ File(rootDir, "lib").eachDir { include("lib:${it.name}") }
 
 File(rootDir, "lib-multiexts").eachDir { include("lib-multiexts:${it.name}") }
 
+// The example extension of the template, which the template setup copies to extensions/en/example in a
+// repo created from it. Built here so it keeps compiling (the release workflow builds it too).
+if (File(rootDir, "template/example").isDirectory) {
+    include(":template:example")
+}
+
 if (System.getenv("CI") != "true") {
     /**
      * Add or remove modules to load as needed for local development here.

@@ -98,10 +98,13 @@ jobs:
           ALIAS: ${{ secrets.EXTENSIONS_KEY_ALIAS }}
           TASKS: ${{ steps.extensions.outputs.tasks }}
         # settings.gradle.kts only loads the extensions listed in CI_EXTENSIONS. gradlew isn't executable in git.
-        # The builds write the source IDs the release reads (build/outputs/tadami/sources.json).
+        # The builds write the source IDs the release reads (build/outputs/tadami/sources.json). The template's
+        # example extension is built too, so that it keeps compiling against the lib (gone once set up).
         run: |
           chmod +x ./gradlew
-          ./gradlew checkSourceIdFormula $TASKS --console=plain
+          example=""
+          if [ -d template/example ]; then example=":template:example:assembleDebug"; fi
+          ./gradlew checkSourceIdFormula $TASKS $example --console=plain
 
       - name: Upload the APKs
         uses: actions/upload-artifact@v4

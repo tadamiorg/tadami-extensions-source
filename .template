@@ -1,0 +1,2 @@
+This repository is the template of Tadami extension repositories. In a repository created from it, the
+"Template setup" workflow (.github/workflows/template-setup.yml) sets it up, then deletes this file.

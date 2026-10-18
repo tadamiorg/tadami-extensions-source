@@ -1,0 +1,47 @@
+# Sets up a repository created from this template ("Use this template" on GitHub), once: its first push runs
+# .github/scripts/template_setup.sh, which sets tadami.repoId to the new repository (its sources' IDs are
+# generated from it), replaces the official extensions with the template's example, resets the README and
+# removes the .template marker, then commits the result. It never runs in the official repository nor in a
+# fork (forks are for contributing to the official extensions), nor once .template is gone.
+#
+# If it didn't run (Actions disabled when the repository was created), run it from the Actions tab.
+name: Template setup
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    if: >-
+      github.repository != 'tadamiorg/tadami-extensions-source' && !github.event.repository.fork &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up the repository
+        id: setup
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          if [ ! -f .template ]; then
+            echo "Already set up: no .template"
+            exit 0
+          fi
+          sh .github/scripts/template_setup.sh "$REPO"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit the setup
+        if: steps.setup.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: set up the repository from the Tadami extensions template"
+          git push
