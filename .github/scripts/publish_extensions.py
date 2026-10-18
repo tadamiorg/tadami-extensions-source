@@ -121,6 +121,7 @@ def signer_digests(apksigner, apk):
 API_REQUIREMENTS = [
     # (method reference in the APK's code, minimum lib version, member)
     ("Lcom/sf/tadami/source/model/SAnime;.setLanguage:", (1, 6), "SAnime.language"),
+    ("Lcom/sf/tadami/network/NetworkHelper;.getWebViewResolver:", (1, 6), "NetworkHelper.webViewResolver"),
 ]
 
 
