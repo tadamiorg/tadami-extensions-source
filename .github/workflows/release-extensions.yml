@@ -1,5 +1,5 @@
-# Builds the chosen extensions and publishes them to the extensions repo (tadamiorg/tadami-extensions):
-# APK, icon and index entry of each, the other extensions are left untouched.
+# Builds the chosen extensions and publishes them to the extensions repo (EXTENSIONS_REPO below): APK, icon and
+# index entry of each, the other extensions are left untouched.
 #
 # Run it from the Actions tab ("Run workflow") with the extensions to release, e.g. "en.animepahe fr.franime".
 # Bump extVersionCode first: a version code that isn't above the published one is refused.
@@ -8,7 +8,11 @@
 #   EXTENSIONS_KEYSTORE_BASE64     the keystore signing the published extensions, base64-encoded (KEY_FILE in .env)
 #   EXTENSIONS_KEY_STORE_PASSWORD  its password (KEY_STORE_PASSWORD in .env), also used for the key
 #   EXTENSIONS_KEY_ALIAS           the key alias (ALIAS in .env)
-#   EXTENSIONS_REPO_TOKEN          fine-grained token with "Contents: Read and write" on tadamiorg/tadami-extensions
+#   EXTENSIONS_REPO_TOKEN          fine-grained token with "Contents: Read and write" on the extensions repo
+#
+# Variables (same page, Variables tab), optional, for a fork or a copy of this template publishing its own repo:
+#   EXTENSIONS_REPO                the repo to publish to, as <owner>/<repo>, pushed to on its default branch.
+#                                  tadamiorg/tadami-extensions for tadamiorg, <owner>/tadami-extensions otherwise
 name: Release extensions
 
 on:
@@ -38,6 +42,7 @@ jobs:
     env:
       # Through the environment rather than interpolated in scripts: it is user input
       CI_EXTENSIONS: ${{ inputs.extensions }}
+      EXTENSIONS_REPO: ${{ vars.EXTENSIONS_REPO || (github.repository_owner == 'tadamiorg' && 'tadamiorg/tadami-extensions' || format('{0}/tadami-extensions', github.repository_owner)) }}
     steps:
       - name: Check out the extensions source
         uses: actions/checkout@v4
@@ -87,7 +92,7 @@ jobs:
       - name: Check out the extensions repo
         uses: actions/checkout@v4
         with:
-          repository: tadamiorg/tadami-extensions
+          repository: ${{ env.EXTENSIONS_REPO }}
           # Reading works without it (public repo), pushing needs it
           token: ${{ secrets.EXTENSIONS_REPO_TOKEN || github.token }}
           path: extensions-repo
@@ -112,7 +117,7 @@ jobs:
           HAS_TOKEN: ${{ secrets.EXTENSIONS_REPO_TOKEN != '' }}
         run: |
           if [ "$HAS_TOKEN" != "true" ]; then
-            echo "::error::The EXTENSIONS_REPO_TOKEN secret is missing, nothing was pushed"
+            echo "::error::The EXTENSIONS_REPO_TOKEN secret is missing, nothing was pushed to $EXTENSIONS_REPO"
             exit 1
           fi
           git config user.name "github-actions[bot]"

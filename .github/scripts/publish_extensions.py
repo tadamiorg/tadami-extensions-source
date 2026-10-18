@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Publishes built extensions into the extensions repo (tadamiorg/tadami-extensions).
+Publishes built extensions into the extensions repo (tadamiorg/tadami-extensions, or the EXTENSIONS_REPO of a fork).
 
     publish_extensions.py tasks   --extensions "en.animepahe fr.franime"
         Prints the Gradle tasks building those extensions.
