@@ -58,3 +58,6 @@ allprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory.asFile.get())
 }
+
+// The source ID formula of common.gradle, and checkSourceIdFormula
+apply(from = "source-ids.gradle")

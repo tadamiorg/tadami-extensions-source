@@ -1,0 +1,33 @@
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+
+// The source ID generated for a source (BuildConfig.SOURCE_ID, see common.gradle): the first 8 bytes,
+// big-endian, of the MD5 of "tadami-source/v1/<repoId>/<package>/<source key>/<versionId>", without the
+// sign bit. The app and users' libraries key everything on it: never change this formula.
+def tadamiSourceId = { String repoId, String pkgName, String sourceKey, int versionId ->
+    def input = "tadami-source/v1/$repoId/$pkgName/$sourceKey/$versionId".toString()
+    def md5 = MessageDigest.getInstance("MD5").digest(input.getBytes(StandardCharsets.UTF_8))
+    ByteBuffer.wrap(md5, 0, 8).getLong() & Long.MAX_VALUE
+}
+// For common.gradle
+ext.tadamiSourceId = tadamiSourceId
+
+tasks.register("checkSourceIdFormula") {
+    group = "verification"
+    description = "Checks the source ID formula against its golden vectors"
+    doLast {
+        def vectors = [
+                [["tadamiorg/tadami-extensions-source", "com.sf.tadami.extension.en.example", "Example", 1], 6336613410238430609L],
+                // The first byte of this MD5 is above 0x7f: checks the sign bit is dropped
+                [["tadamiorg/tadami-extensions-source", "com.sf.tadami.extension.en.example", "Example", 2], 9134517330839634511L],
+                [["someone/my-tadami-extensions", "com.sf.tadami.extension.fr.mysite", "MySite", 2], 7609913951017119423L],
+        ]
+        def wrong = vectors.findAll { args, expected -> tadamiSourceId(*args) != expected }
+        if (wrong) {
+            throw new GradleException("The source ID formula changed, it gives " +
+                    wrong.collect { args, expected -> "${tadamiSourceId(*args)} instead of $expected for $args" }.join(", "))
+        }
+        logger.lifecycle("Source ID formula OK (${vectors.size()} vectors)")
+    }
+}

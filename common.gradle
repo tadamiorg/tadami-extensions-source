@@ -13,6 +13,66 @@ if (extensionsLib == null) {
             "expected one of ${libByApiVersion.keySet().join(", ")} (see common.gradle)")
 }
 
+// Source IDs. The app and users' libraries key everything on them, so they never change. A new source uses
+// the ID generated from the repo (tadami.repoId in gradle.properties), its package and its source key (the
+// simple name of its class in extClass, or extSourceKeys, ";"-separated in the same order), with
+// extSourceVersionId (1 by default) to give it a new one: BuildConfig.SOURCE_ID, or SOURCE_ID_<KEY> for each
+// source (key uppercased). The sources released before keep the explicit ID written in their code.
+def repoId = findProperty("tadami.repoId")?.toString()?.trim()
+if (!repoId) {
+    throw new GradleException("tadami.repoId is not set: add tadami.repoId=<owner>/<repo>, the GitHub repo of " +
+            "these extensions, to gradle.properties. The source IDs are generated from it, never change it once released.")
+}
+if (!(repoId ==~ /[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/)) {
+    throw new GradleException("tadami.repoId \"$repoId\" is not <owner>/<repo>")
+}
+def pkgName = "com.sf.tadami.extension.$pkgNameSuffix"
+def sourceClasses = extClass.split(";").collect { it.trim() }.findAll { it }
+def sourceKeys = project.ext.properties.get("extSourceKeys")?.split(";")?.collect { it.trim() } ?:
+        sourceClasses.collect { it.substring(it.lastIndexOf(".") + 1) }
+if (sourceKeys.size() != sourceClasses.size() || sourceKeys.any { !(it ==~ /[A-Za-z][A-Za-z0-9_]*/) }) {
+    throw new GradleException("$project.path: extSourceKeys needs one key per class of extClass, letters, digits and _")
+}
+def sourceVersionId = project.ext.properties.getOrDefault("extSourceVersionId", 1) as int
+def sourceIdFields = sourceKeys.collect { "SOURCE_ID_" + it.toUpperCase() }
+def generatedIds = sourceKeys.collect { rootProject.ext.tadamiSourceId(repoId, pkgName, it, sourceVersionId) }
+
+// The ID each source really uses, read from the declaration in the file of its class: a literal
+// (sourceId = 7, or override val id = 7L) or a BuildConfig field. The manifest and sources.json carry it.
+def idDeclaration = /(?:\bsourceId|\boverride\s+val\s+id)\s*(?::\s*Long\s*)?=\s*/
+def sourceIdProblems = []
+def sources = sourceClasses.withIndex().collect { sourceClass, i ->
+    def className = sourceClass.startsWith(".") ? pkgName + sourceClass : sourceClass
+    def simpleName = className.substring(className.lastIndexOf(".") + 1)
+    def file = fileTree("src") { include "**/*.kt" }.find { it.text =~ /\bclass\s+$simpleName\b/ }
+    def code = file?.text ?: ""
+    def literals = (code =~ (idDeclaration + /(\d+)L?\b/)).collect { it[1] }.unique()
+    def fields = (code =~ (idDeclaration + /BuildConfig\.(SOURCE_ID\w*)/)).collect { it[1] }.unique()
+    def id = null
+    if (literals.size() + fields.size() != 1) {
+        sourceIdProblems << "$className: expected one sourceId = <literal> or BuildConfig.SOURCE_ID in " +
+                "${file ? relativePath(file) : "its file"}, found ${literals + fields ?: "none"}"
+    } else if (literals) {
+        id = literals[0] as long
+    } else if (fields[0] == "SOURCE_ID") {
+        id = generatedIds[0]
+    } else if (fields[0] in sourceIdFields) {
+        id = generatedIds[sourceIdFields.indexOf(fields[0])]
+    } else {
+        sourceIdProblems << "$className: BuildConfig.${fields[0]} doesn't exist, the fields are SOURCE_ID, ${sourceIdFields.join(", ")}"
+    }
+    [
+            "class"      : className,
+            "key"        : sourceKeys[i],
+            "versionId"  : sourceVersionId,
+            // Strings: they don't fit in a JavaScript number
+            "id"         : id?.toString(),
+            "generatedId": generatedIds[i].toString(),
+            // Written as a literal in the code, not the generated one
+            "explicit"   : id != null && !literals.isEmpty(),
+    ]
+}
+
 android {
     compileSdkVersion build.versions.compileSdk.get().toInteger()
     namespace "com.sf.tadami.extension.$pkgNameSuffix"
@@ -37,9 +97,13 @@ android {
         versionCode extVersionCode
         versionName "$apiVersion.$extVersionCode"
         manifestPlaceholders = [
-                appName : "Tadami: $extName",
-                extClass: extClass
+                appName  : "Tadami: $extName",
+                extClass : extClass,
+                repoId   : repoId,
+                sourceIds: sources.collect { it.id ?: "" }.join(";"),
         ]
+        buildConfigField "long", "SOURCE_ID", "${generatedIds[0]}L"
+        sourceIdFields.eachWithIndex { field, i -> buildConfigField "long", field, "${generatedIds[i]}L" }
     }
 
     // fetch() reads environment variables first, then .env: CI has no .env, so the typed env.KEY_FILE
@@ -85,6 +149,27 @@ android {
         }
     }
 }
+
+// build/outputs/tadami/sources.json: the sources and their IDs, which the release publishes and checks
+def sourcesJson = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+        "repoId" : repoId,
+        "pkg"    : pkgName,
+        "sources": sources,
+]))
+def writeSourceIds = tasks.register("writeSourceIds") {
+    description = "Writes the source IDs of the extension to build/outputs/tadami/sources.json"
+    def output = layout.buildDirectory.file("outputs/tadami/sources.json")
+    inputs.property("sources", sourcesJson)
+    inputs.property("problems", sourceIdProblems)
+    outputs.file(output)
+    doLast {
+        if (sourceIdProblems) {
+            throw new GradleException(sourceIdProblems.join("\n"))
+        }
+        output.get().asFile.text = sourcesJson + "\n"
+    }
+}
+tasks.named("preBuild") { dependsOn(writeSourceIds) }
 
 dependencies {
     implementation(project(":core"))

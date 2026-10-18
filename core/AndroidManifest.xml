@@ -5,6 +5,10 @@
 
     <application android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:label="${appName}">
         <meta-data android:name="tadami.extension.class" android:value="${extClass}" />
+        <!-- The repo the extension is built from, and the ID of each of its sources (";", extClass order).
+             Read them with metaData.get(name)?.toString(): aapt2 stores a lone ID that fits an int as one -->
+        <meta-data android:name="tadami.extension.repoId" android:value="${repoId}" />
+        <meta-data android:name="tadami.extension.sourceIds" android:value="${sourceIds}" />
     </application>
 
 </manifest>
