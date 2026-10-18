@@ -14,7 +14,22 @@ buildscript {
     }
 }
 
+// -Ptadami.localLib=<version>: every module compiles against that extensions-lib version, whatever its
+// apiVersion, taken from mavenLocal first (see settings.gradle.kts)
+val localLib = providers.gradleProperty("tadami.localLib").orNull
+
 allprojects {
+    if (localLib != null) {
+        configurations.configureEach {
+            resolutionStrategy.eachDependency {
+                if (requested.group == "com.github.tadamiorg" && requested.name == "tadami") {
+                    useVersion(localLib)
+                    because("built against the local extensions-lib (-Ptadami.localLib)")
+                }
+            }
+        }
+    }
+
     // Use JVM Toolchain to ensure Java and Kotlin tasks use the same JVM target (17).
     // This resolves "Inconsistent JVM Target Compatibility" errors.
     plugins.withType<org.jetbrains.kotlin.gradle.plugin.KotlinBasePluginWrapper> {

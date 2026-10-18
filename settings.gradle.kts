@@ -69,6 +69,13 @@ dependencyResolutionManagement {
     // Every module's repositories. JitPack serves extensions-lib (com.github.tadamiorg:tadami) and injekt
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
+        // -Ptadami.localLib=<version>: extensions-lib from mavenLocal, e.g. an unreleased one published by
+        // ./gradlew :extensions-lib:publishToMavenLocal in the app repo (build.gradle.kts uses that version)
+        if (providers.gradleProperty("tadami.localLib").isPresent) {
+            mavenLocal {
+                content { includeModule("com.github.tadamiorg", "tadami") }
+            }
+        }
         mavenCentral()
         google()
         maven(url = "https://jitpack.io")
