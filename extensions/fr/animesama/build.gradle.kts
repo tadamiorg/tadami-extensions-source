@@ -6,7 +6,7 @@ plugins {
 
 buildscript {
     extra.apply {
-        set("extVersionCode",31)
+        set("extVersionCode",32)
         set("extName","AnimeSama")
         // SAnime.language (the VF/VOSTFR badge) is lib 1.6
         set("apiVersion","1.6")

@@ -480,9 +480,8 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             .flatMap { response ->
                 val document = response.asJsoup()
                 val episodesUrl =
-                    document.selectFirst("#sousBlocMilieu")?.selectFirst("script")?.attr("src")
-                        ?.takeIf { it.contains("episodes.js") } ?: "episodes.js"
-                val episodeScriptRequest = GET(baseUrl + anime.url + "/$episodesUrl", headers)
+                    document.selectFirst("script[src*=episodes.js]")?.attr("src") ?: "episodes.js"
+                val episodeScriptRequest = GET(baseUrl + anime.url + "/$episodesUrl", seasonHeaders(anime.url))
                 client.newCall(episodeScriptRequest)
                     .asCancelableObservable()
                     .map { res ->
@@ -701,8 +700,12 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         throw Exception("Not used")
 
     override fun episodeSourcesRequest(url: String): Request {
-        return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", headers)
+        return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", seasonHeaders(url.substringBeforeLast("?")))
     }
+
+    /** episodes.js answers 403 (a Cloudflare firewall rule) without a Referer from the site: send the season page's, as a browser does. */
+    private fun seasonHeaders(seasonUrl: String) =
+        headers.newBuilder().set("Referer", "$baseUrl$seasonUrl/").build()
 
     override fun getEpisodeUrl(episode: SEpisode): String {
         return baseUrl + episode.url.substringBeforeLast("?")
@@ -731,10 +734,13 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         private const val UQLOAD_HOST = "uqload.vc"
         private const val VIDHIDE_SERVER = "VidHide"
 
-        /** VidHide network domains linked by the site (movearnpre.com and mivalyo.com are gone, their codes live on). */
+        /**
+         * VidHide network domains linked by the site, which calls them "Earnvids" (movearnpre.com and mivalyo.com
+         * are gone, earnvids.com is down, their codes live on).
+         */
         private val VIDHIDE_HOSTS = setOf(
             "minochinos.com", "callistanise.com", "dingtezuni.com", "morencius.com", "smoothpre.com",
-            "movearnpre.com", "mivalyo.com", "bingezove.com", "vidhidevip.com", "vidhidepre.com",
+            "movearnpre.com", "mivalyo.com", "bingezove.com", "vidhidevip.com", "vidhidepre.com", "earnvids.com",
         )
         /** VidHide mirrors that serve the codes themselves, not blocked by the ISPs that block callistanise.com. */
         private val VIDHIDE_MIRRORS = listOf("smoothpre.com", "morencius.com", "callistanise.com")
