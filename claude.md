@@ -1095,10 +1095,10 @@ Make necessary changes to selectors, parsers, or logic.
 
 **3. Test changes:**
 
-Build and test the extension thoroughly:
+Build the release, signed with the key from `.env`, and test the extension thoroughly:
 
 ```bash
-./gradlew :extensions:en:animesite:assembleDebug
+./gradlew :extensions:en:animesite:assembleRelease
 ```
 
 **4. Add migration if needed:**
@@ -1169,33 +1169,37 @@ companion object : CustomPreferences<AnimeSitePreferences> {
 
 ### Build Extension
 
+Always build the release, signed with the keystore from `.env`, even to test an extension locally. Tadami
+reserves the IDs of the official sources to extensions signed with the official key: a debug-signed build of
+one of them is refused as a source ID conflict. And the app doesn't let a build signed with another key replace
+the installed extension.
+
 ```bash
 # Build specific extension
-./gradlew :extensions:en:animesite:assembleDebug
+./gradlew :extensions:en:animesite:assembleRelease
 
 # Build all extensions
-./gradlew assembleDebug
-
-# Build release version
-./gradlew :extensions:en:animesite:assembleRelease
+./gradlew assembleRelease
 
 # Build against an unreleased extensions-lib, published to mavenLocal from the app repo
 # (./gradlew :extensions-lib:publishToMavenLocal there)
-./gradlew -Ptadami.localLib=lib-1.7.0 :extensions:en:animesite:assembleDebug
+./gradlew -Ptadami.localLib=lib-1.7.0 :extensions:en:animesite:assembleRelease
 ```
 
 ### Output Location
 
 Built APKs are located at:
 ```
-extensions/{lang}/{source-name}/build/outputs/apk/debug/{source-name}-debug.apk
+extensions/{lang}/{source-name}/build/outputs/apk/release/tadami-{lang}.{source-name}-v{api}.{code}.apk
 ```
 
 ### Installing Extension
 
-1. Build the APK
-2. Install the APK in the Tadami app
-3. The app will detect and load the extension automatically
+1. Build the release APK
+2. Install a debug build of Tadami (`com.sf.tadami.debug`, from the app repo), then the extension with
+   `adb install -r <apk>`
+3. The debug app adopts the installed extension, copies it into its storage and loads it (restart the app
+   after a reinstall at the same version code)
 
 ### Testing Checklist
 

@@ -128,14 +128,19 @@ The release also reads two declarations from the code as written, keep them lite
 
 ## Build and test
 
+Always build the release, signed with your key, even to test an extension locally:
+
 ```bash
-./gradlew :extensions:en:mysite:assembleDebug
-# extensions/en/mysite/build/outputs/apk/debug/tadami-en.mysite-v1.6.1.apk
+./gradlew :extensions:en:mysite:assembleRelease
+# extensions/en/mysite/build/outputs/apk/release/tadami-en.mysite-v1.6.1.apk
 ```
 
+Don't test with a debug build. Tadami reserves the IDs of the official sources to extensions signed with the
+official key: a debug-signed build of one of them is refused, as a source ID conflict. And a build signed with
+another key than the installed extension can't replace it (see below).
+
 `common.gradle` reads the signing values (`KEY_FILE`, `KEY_STORE_PASSWORD`, `ALIAS`) at every build, from the
-environment or from `.env`: a debug build only needs them set, to anything. A release build
-(`assembleRelease`) is signed with them:
+environment or from `.env`, and signs the release with them:
 
 ```bash
 keytool -genkeypair -keystore extensions.jks -alias extensions -keyalg RSA -keysize 4096 -validity 36500
@@ -152,17 +157,18 @@ Keep the keystore safe: every update of an extension must be signed with the sam
 it, and the key is what users trust (see below).
 
 **Test on a device** with a debug build of Tadami (`com.sf.tadami.debug`, built from the app repo): it takes in
-an extension installed with adb.
+an extension installed with adb. Only the app is a debug build, the extension is the signed release.
 
 ```bash
-adb install -r extensions/en/mysite/build/outputs/apk/debug/tadami-en.mysite-v1.6.1.apk
+adb install -r extensions/en/mysite/build/outputs/apk/release/tadami-en.mysite-v1.6.1.apk
 adb shell am force-stop com.sf.tadami.debug   # then open the app again
 ```
 
 At every launch, and when a package is installed or replaced, the debug app copies an installed extension
 into its storage when its version code is higher, or the same with another content, and loads it. It refuses one
-signed with another key than its copy: a debug-signed build can't replace an extension installed from a
-repository, uninstall that one in the app first (`adb logcat -s ExtensionsMigration` shows why it refused).
+signed with another key than its copy: signed with your release key, your build replaces the extension
+installed from your repository. Otherwise uninstall that one in the app first (`adb logcat -s ExtensionsMigration`
+shows why it refused).
 Without the package manager, copy the APK in yourself:
 
 ```bash
@@ -176,7 +182,7 @@ its version:
 
 ```bash
 ./gradlew :extensions-lib:publishToMavenLocal        # in the app repo: com.github.tadamiorg:tadami:lib-<version>
-./gradlew -Ptadami.localLib=lib-1.7.0 :extensions:en:mysite:assembleDebug
+./gradlew -Ptadami.localLib=lib-1.7.0 :extensions:en:mysite:assembleRelease
 ```
 
 Every module then compiles against that version, from `mavenLocal()` first. JitPack also builds any commit of

@@ -48,8 +48,12 @@ adb -s emulator-5554 shell dumpsys package com.sf.tadami.extension.<lang>.<name>
 
 - **Fresh app install** (or after `connectedAndroidTest`, which uninstalls the app): onboarding comes
   first. Next → Select a folder → USE THIS FOLDER → ALLOW → Next → Next → Get started.
-- **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`**: the installed extension was signed with another key (e.g. a
-  debug build). On the emulator, `adb uninstall com.sf.tadami.extension.<lang>.<name>` and install
+- **Only the app is a debug build.** The extension is always the release, signed with the key from
+  `.env`: the app reserves the official source IDs to the official key, so a debug-signed official
+  extension is refused as a source ID conflict, and the app won't let a build signed with another key
+  replace its copy (`adb logcat -s ExtensionsMigration` says why).
+- **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`**: the installed extension was signed with another key (e.g. an
+  old debug build). On the emulator, `adb uninstall com.sf.tadami.extension.<lang>.<name>` and install
   again. Never do that on the user's phone without asking.
 - **The app keeps the old code after a reinstall**: the version code didn't go up. The app only swaps an
   extension live when its version code increases; logcat then shows

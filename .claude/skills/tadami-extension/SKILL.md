@@ -315,8 +315,11 @@ export JAVA_HOME=<jdk17>
 python .claude/skills/tadami-extension/scripts/ext_check.py check <lang>.<name>
 ```
 
-Without the signing key, `assembleDebug` builds an APK for local testing only. It's signed with the debug
-key, so it can't replace a release-signed install. `ext_check.py check` verifies what the release relies
+Always build the release, even to test locally: never `assembleDebug`. The app reserves the official
+source IDs to extensions signed with the official key, so a debug-signed build of an official source is
+refused as a source ID conflict, and a build signed with another key can't replace the installed
+extension. Without `.env` and its keystore, ask the user for them instead of falling back to a debug
+build. `ext_check.py check` verifies what the release relies
 on: the three declarations, a unique id, the package suffix, the icon, and a version code above the
 published one. It also notes a published source id that differs from the code's: the code's id is the
 real one (the app and the users' libraries use it), so never change `sourceId` to match the index. The
@@ -327,7 +330,7 @@ build against it; every module then uses that version, from `mavenLocal()`:
 
 ```bash
 ./gradlew :extensions-lib:publishToMavenLocal                                  # in the tadami repo
-./gradlew -Ptadami.localLib=lib-1.7.0 :extensions:<lang>:<name>:assembleDebug  # here
+./gradlew -Ptadami.localLib=lib-1.7.0 :extensions:<lang>:<name>:assembleRelease  # here
 ```
 
 Such an extension can't be released before that lib is (on JitPack, `lib-X.Y.Z` tag of the app repo) and
@@ -336,8 +339,8 @@ mapped to its `apiVersion` in `common.gradle` and `gradle/libs.versions.toml`.
 ## Test on a device
 
 Read `references/device-testing.md` for commands. In short: prefer the emulator. Install the debug app
-(`com.sf.tadami.debug`, built from the sibling `tadami` repo) and the extension APK with
-`adb install -r`, then drive the app with `scripts/adb_ui.py` and watch logcat. The user's phone is
+(`com.sf.tadami.debug`, built from the sibling `tadami` repo) and the release-signed extension APK
+(`build/outputs/apk/release/`) with `adb install -r`: the debug app adopts it. Then drive the app with `scripts/adb_ui.py` and watch logcat. The user's phone is
 theirs. Don't uninstall or wipe anything there, and don't tap while they're using it.
 
 Two things look like failures and aren't:
