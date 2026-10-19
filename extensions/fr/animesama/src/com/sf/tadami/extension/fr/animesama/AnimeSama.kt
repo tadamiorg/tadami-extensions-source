@@ -340,11 +340,11 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         }
         anime.description =
             document.selectFirst("#synopsisText")?.text()
-        anime.genres = document.select(".genres-wrap span").map { it.text().trim() }
+        anime.genres = document.select(".oe-genres a.genre-pill").map { it.text().trim() }
         anime.thumbnailUrl = document.selectFirst("meta[itemprop=image]")?.attr("content")
 
-        val statusText = document.select(".info-lbl:contains(État) + .info-val")
-            .firstOrNull()?.text() ?: ""
+        // The anime's list comes first, before the source manga's one (which has its own "Statut")
+        val statusText = infoOf(document, "Statut") ?: ""
 
         anime.status = when {
             statusText.contains("En cours", true) -> SAnimeStatus.ONGOING
@@ -352,22 +352,29 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             else -> SAnimeStatus.UNKNOWN
         }
 
-        val releaseText =
-            document.select(".info-lbl:contains(Année) + .info-val").firstOrNull()?.text() ?: ""
+        // "20 oct. 1999"; films have no airing date, only the year in "2016 · Film · CoMix Wave · Terminé"
+        anime.release = infoOf(document, "Diffusion")
+            ?: document.selectFirst("p.oe-meta")?.text()?.let { YEAR_REGEX.find(it)?.value }
 
-        anime.release = releaseText
+        // The anime's creator or the manga's author(s), else the staff credited with the original work
+        anime.author = infoOf(document, "Créateur", "Auteur", "Auteurs")
+            ?: document.select(".oe-staff")
+                .filter { it.selectFirst(".oe-perso-detail")?.text() in ORIGINAL_AUTHOR_ROLES }
+                .mapNotNull { it.selectFirst(".oe-perso-nom")?.text() }
+                .distinct()
+                .joinToString(", ")
+                .ifEmpty { null }
 
-        val authorText =
-            document.select(".info-lbl:contains(Créateur) + .info-val").firstOrNull()?.text() ?: ""
-
-        anime.author = authorText
-
-        val studioText = document.select("span#studioText").firstOrNull()?.text() ?: ""
-
-        anime.studio = studioText
+        anime.studio = infoOf(document, "Studio", "Studios")
 
         return anime
     }
+
+    /** The first value of the "Informations" lists (<dt>Studio</dt><dd>Toei Animation</dd>) labelled one of [labels]. */
+    private fun infoOf(document: Document, vararg labels: String): String? =
+        document.select("dl.oe-infos dt")
+            .firstOrNull { it.text() in labels }
+            ?.nextElementSibling()?.text()?.takeIf { it.isNotBlank() }
 
     override fun animeDetailsParse(document: Document): SAnime = throw Exception("Not used")
 
@@ -727,6 +734,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         private const val TAG = "AnimeSama"
 
         private val SEASON_REGEX = Regex("^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)", RegexOption.MULTILINE)
+
+        private val YEAR_REGEX = Regex("\\b(19|20)\\d{2}\\b")
+
+        private val ORIGINAL_AUTHOR_ROLES = setOf("Auteur original", "Histoire originale")
 
         private const val ANSEMBED_HOST = "ansembed.net"
         private const val ANSEMBED_SERVER = "AnsEmbed"
