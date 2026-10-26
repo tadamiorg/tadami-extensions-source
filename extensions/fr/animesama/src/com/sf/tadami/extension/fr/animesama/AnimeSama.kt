@@ -1,5 +1,6 @@
 package com.sf.tadami.extension.fr.animesama
 
+import android.os.SystemClock
 import android.text.Html
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -34,10 +35,12 @@ import com.sf.tadami.utils.editPreference
 import io.reactivex.rxjava3.core.Observable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -563,15 +566,49 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
             .filter { hostOf(it) == Host.VOE }
             .map { it.host } + VOE_HOSTS).distinct()
 
-        val newClient = client.shortTimeOutBuilder(15)
+        val newClient = client.shortTimeOutBuilder(PLAYER_CALL_TIMEOUT_S)
 
-        return episodePlayers.parallelMap { url ->
+        return streamsWithinDeadline(episodePlayers) { url ->
             runCatching { sourcesFromPlayer(newClient, url, voeHosts) }
                 .onFailure { Log.e(TAG, "Could not extract the streams of $url", it) }
                 .getOrNull()
                 .orEmpty()
                 .also { if (it.isEmpty()) Log.w(TAG, "No stream from $url") }
-        }.flatten()
+        }
+    }
+
+    /**
+     * The streams of each player, extracted in parallel, in the players' order, without waiting for the slow
+     * ones: a broken player tries its mirrors one call timeout after the other. Once a player gives streams, the
+     * others have [PLAYERS_GRACE_MS] more, [PLAYERS_MAX_WAIT_MS] at most in all. A player left behind runs on in
+     * the background, its streams dropped.
+     */
+    private fun streamsWithinDeadline(
+        players: List<HttpUrl>,
+        extract: (HttpUrl) -> List<StreamSource>,
+    ): List<StreamSource> = runBlocking {
+        val done = Channel<Pair<Int, List<StreamSource>>>(Channel.UNLIMITED)
+        // Out of runBlocking's scope, which would wait for the players left behind
+        val scope = CoroutineScope(Dispatchers.IO)
+        players.forEachIndexed { index, url ->
+            scope.launch { done.send(index to extract(url)) }
+        }
+
+        val results = arrayOfNulls<List<StreamSource>>(players.size)
+        var deadline = SystemClock.elapsedRealtime() + PLAYERS_MAX_WAIT_MS
+        var received = 0
+        while (received < players.size) {
+            val (index, streams) = withTimeoutOrNull(deadline - SystemClock.elapsedRealtime()) {
+                done.receive()
+            } ?: break
+            results[index] = streams
+            received++
+            if (streams.isNotEmpty()) deadline = minOf(deadline, SystemClock.elapsedRealtime() + PLAYERS_GRACE_MS)
+        }
+        if (received < players.size) {
+            Log.w(TAG, "Left behind, too slow: ${players.filterIndexed { index, _ -> results[index] == null }}")
+        }
+        results.filterNotNull().flatten()
     }
 
     private enum class Host { ANSEMBED, VIDMOLY, VIDHIDE, VOE, UQLOAD, SENDVID, VK, LPAYER, SIBNET, YOURUPLOAD, UNKNOWN }
@@ -744,6 +781,15 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         private const val VIDMOLY_HOST = "vidmoly.org"
         private const val UQLOAD_HOST = "uqload.vc"
         private const val VIDHIDE_SERVER = "VidHide"
+
+        /** A player's page and playlists answer in about a second; a dead mirror isn't waited on longer. */
+        private const val PLAYER_CALL_TIMEOUT_S = 10L
+
+        /** How long the other players have once one gives streams: the working ones finish within a few seconds. */
+        private const val PLAYERS_GRACE_MS = 5_000L
+
+        /** How long the players have in all when none gives streams. */
+        private const val PLAYERS_MAX_WAIT_MS = 30_000L
 
         /**
          * VidHide network domains linked by the site, which calls them "Earnvids" (movearnpre.com and mivalyo.com
