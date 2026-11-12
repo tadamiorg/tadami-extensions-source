@@ -1,7 +1,6 @@
 package com.sf.tadami.extension.fr.animesama
 
 import android.os.SystemClock
-import android.text.Html
 import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -42,7 +41,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -472,7 +475,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
                     "finirListe", "finirListeOP" -> {
                         val baseEpNumber = parameters[0].toInt()
-                        for (i in 0 until (totalEpisodes - episodesNames.size) - 1) {
+                        for (i in 0 until totalEpisodes - episodesNames.size) {
                             episodesNames.add("Episode ${baseEpNumber + i}")
                         }
                     }
@@ -487,53 +490,57 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     override fun fetchEpisodesList(anime: Anime): Observable<List<SEpisode>> {
         return client.newCall(episodesListRequest(anime))
             .asCancelableObservable()
-            .flatMap { response ->
+            .map { response ->
                 val document = response.asJsoup()
-                val episodesUrl =
-                    document.selectFirst("script[src*=episodes.js]")?.attr("src") ?: "episodes.js"
-                val episodeScriptRequest = GET(baseUrl + anime.url + "/$episodesUrl", seasonHeaders(anime.url))
-                client.newCall(episodeScriptRequest)
-                    .asCancelableObservable()
-                    .map { res ->
-                        val doc = res.asJsoup()
-                        val pattern = Regex("""var (.*?) = \[(.*?)\];""")
-                        val matches = pattern.findAll(doc.html())
-
-                        val variableLinkCounts: MutableMap<String, Int> = mutableMapOf()
-
-                        for (matchResult in matches) {
-                            val variableName = matchResult.groupValues[1]
-                            val urls = matchResult.groupValues[2]
-                                .split(",")
-                                .map { it.trim('\'', '"', ' ', '\n', '\r') }
-
-                            val linkCount = urls.size
-                            variableLinkCounts[variableName] = linkCount
-                        }
-                        val episodesList: MutableList<SEpisode> = mutableListOf()
-                        val variableWithMostLinks = variableLinkCounts.maxByOrNull { it.value }
-                        val trueNames = try {
-                            parseEpisodesTrueNames(
-                                getEpisodesTrueNames(document),
-                                variableWithMostLinks?.value
-                            )
-                        } catch (e: Exception) {
-                            emptyList()
-                        }
-                        for (i in 1..(variableWithMostLinks?.value?.minus(1) ?: 0)) {
-                            val episode = SEpisode.create()
-                            episode.episodeNumber = i.toFloat()
-                            episode.name = if (trueNames.getOrNull(i - 1) != null) {
-                                trueNames[i - 1]
-                            } else {
-                                "Episode ${i.toFloat()}"
-                            }
-                            episode.url = "${anime.url}?number=$i"
-                            episodesList.add(episode)
-                        }
-                        episodesList.reversed()
+                // One array per player, indexed by episode: the longest one gives the episodes count
+                val episodesCount = playersOf(document).maxOfOrNull { it.size } ?: 0
+                val episodesList: MutableList<SEpisode> = mutableListOf()
+                val trueNames = try {
+                    parseEpisodesTrueNames(
+                        getEpisodesTrueNames(document),
+                        episodesCount
+                    )
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                for (i in 1..episodesCount) {
+                    val episode = SEpisode.create()
+                    episode.episodeNumber = i.toFloat()
+                    episode.name = if (trueNames.getOrNull(i - 1) != null) {
+                        trueNames[i - 1]
+                    } else {
+                        "Episode ${i.toFloat()}"
                     }
+                    episode.url = "${anime.url}?number=$i"
+                    episodesList.add(episode)
+                }
+                episodesList.reversed()
             }
+    }
+
+    /**
+     * The players of a season page (12/11/2026: inline, episodes.js is gone), one array per player indexed by
+     * episode: var eps1 = ["lien:180231", ...]. A "lien:<id>" is resolved by [resolvedLink].
+     */
+    private fun playersOf(document: Document): List<List<String>> =
+        PLAYERS_REGEX.findAll(scriptsOf(document))
+            .map { json.decodeFromString<List<String>>(it.groupValues[1]) }
+            .toList()
+
+    private fun scriptsOf(document: Document) = document.select("script").joinToString("\n") { it.data() }
+
+    /** The page gives "lien:<id>" only: the player's address comes from /api/lien.php, with the page's token. */
+    private fun resolvedLink(client: OkHttpClient, link: String, token: String, seasonUrl: String): String? {
+        if (!link.startsWith("lien:")) return link
+        val url = "$baseUrl/api/lien.php".toHttpUrl().newBuilder()
+            .addQueryParameter("j", token)
+            .addQueryParameter("l", link.removePrefix("lien:"))
+            .build()
+        return runCatching {
+            client.newCall(GET(url.toString(), seasonHeaders(seasonUrl))).execute().use { response ->
+                json.parseToJsonElement(response.body.string()).jsonObject["u"]?.jsonPrimitive?.contentOrNull
+            }
+        }.onFailure { Log.e(TAG, "Could not resolve $link", it) }.getOrNull()
     }
 
     // ============================== Episode Sources ===============================
@@ -544,29 +551,26 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
     private fun episodeSourcesParse(response: Response, originUrl: String): List<StreamSource> {
 
         val document: Document = response.asJsoup()
-        val javascriptCode = Html.fromHtml(document.html(), Html.FROM_HTML_MODE_LEGACY).toString()
-        val pattern = Regex("""(?<!\/\*)var (.*?) = \[(.*?)\];""")
-
-        // One array per player, indexed by episode
-        val players = pattern.findAll(javascriptCode).map { matchResult ->
-            matchResult.groupValues[2]
-                .split(",")
-                .map { it.trim('\'', '"', ' ', '\n', '\r', '\t') }
-        }.toList()
+        val scripts = scriptsOf(document)
+        val token = EPS_TOKEN_REGEX.find(scripts)?.groupValues?.get(1).orEmpty()
+        val seasonUrl = originUrl.substringBeforeLast("?")
+        val newClient = client.shortTimeOutBuilder(PLAYER_CALL_TIMEOUT_S)
 
         val episodeNumber = originUrl.substringAfter("?number=").toInt()
         // The same link is often in two players
-        val episodePlayers = players
-            .mapNotNull { it.getOrNull(episodeNumber - 1)?.toHttpUrlOrNull() }
+        val episodePlayers = playersOf(document)
+            .mapNotNull { it.getOrNull(episodeNumber - 1) }
+            .distinct()
+            .parallelMap { resolvedLink(newClient, it, token, seasonUrl)?.toHttpUrlOrNull() }
+            .filterNotNull()
             .distinct()
 
         // A VOE code plays on any VOE domain. The site links mirrors with random names that come and go,
-        // so each code is also tried on the other VOE hosts of the season
-        val voeHosts = (players.flatten().mapNotNull { it.toHttpUrlOrNull() }
-            .filter { hostOf(it) == Host.VOE }
-            .map { it.host } + VOE_HOSTS).distinct()
-
-        val newClient = client.shortTimeOutBuilder(PLAYER_CALL_TIMEOUT_S)
+        // so each code is also tried on the other VOE hosts of the season (epsMeta names each link's host)
+        val voeHosts = (EPS_META_HOST_REGEX.findAll(EPS_META_REGEX.find(scripts)?.value.orEmpty())
+            .map { it.groupValues[1].lowercase(Locale.ROOT) }
+            .filter { host -> "https://$host/e/code".toHttpUrlOrNull()?.let { hostOf(it) } == Host.VOE }
+            .toList() + VOE_HOSTS).distinct()
 
         return streamsWithinDeadline(episodePlayers) { url ->
             runCatching { sourcesFromPlayer(newClient, url, voeHosts) }
@@ -744,10 +748,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         throw Exception("Not used")
 
     override fun episodeSourcesRequest(url: String): Request {
-        return GET(baseUrl + url.substringBeforeLast("?") + "/episodes.js?", seasonHeaders(url.substringBeforeLast("?")))
+        return GET(baseUrl + url.substringBeforeLast("?") + "/", headers)
     }
 
-    /** episodes.js answers 403 (a Cloudflare firewall rule) without a Referer from the site: send the season page's, as a browser does. */
+    /** The site's own calls (/api/lien.php) are sent with the season page as Referer, as a browser does. */
     private fun seasonHeaders(seasonUrl: String) =
         headers.newBuilder().set("Referer", "$baseUrl$seasonUrl/").build()
 
@@ -773,6 +777,12 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         private val SEASON_REGEX = Regex("^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)", RegexOption.MULTILINE)
 
         private val YEAR_REGEX = Regex("\\b(19|20)\\d{2}\\b")
+
+        private val PLAYERS_REGEX = Regex("""^\s*var eps\d+ = (\[.*?]);""", RegexOption.MULTILINE)
+        private val EPS_TOKEN_REGEX = Regex("""var epsJeton = "([^"]*)"""")
+        /** var epsMeta = {"180230":["uqload.vc"],"180231":["ansembed.net",1]}: each link's host (1, 2: deleted) */
+        private val EPS_META_REGEX = Regex("""var epsMeta = \{.*?\};""")
+        private val EPS_META_HOST_REGEX = Regex(""""\d+":\["([^"]+)"""")
 
         private val ORIGINAL_AUTHOR_ROLES = setOf("Auteur original", "Histoire originale")
 
