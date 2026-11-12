@@ -698,7 +698,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         val code = url.pathSegments.lastOrNull { it.isNotBlank() } ?: return emptyList()
         return mirrorSources("VidHide", code, VIDHIDE_MIRRORS + url.host) { host ->
             VidHideExtractor(client, "https://$host")
-                .videosFromUrl("https://$host/embed/$code", prefix = VIDHIDE_SERVER, server = VIDHIDE_SERVER)
+                .videosFromUrl("https://$host/embed/$code", prefix = VIDHIDE_SERVER, server = VIDHIDE_SERVER, referer = "$baseUrl/")
         }
     }
 

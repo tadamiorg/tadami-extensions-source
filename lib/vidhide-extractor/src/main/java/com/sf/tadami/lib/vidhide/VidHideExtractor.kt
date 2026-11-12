@@ -12,8 +12,10 @@ class VidHideExtractor(private val client: OkHttpClient, private val baseUrl: St
 
     private val playlistUtils by lazy { PlaylistUtils(client) }
 
-    fun videosFromUrl(url: String, prefix: String = "VidHide", server: String = "VidHide"): List<StreamSource> {
-        val doc = client.newCall(GET(url)).execute().asJsoup()
+    /** [referer]: the site linking the video. Some uploaders only serve the player to their own site, a placeholder page otherwise */
+    fun videosFromUrl(url: String, prefix: String = "VidHide", server: String = "VidHide", referer: String? = null): List<StreamSource> {
+        val request = GET(url).let { if (referer == null) it else it.newBuilder().header("Referer", referer).build() }
+        val doc = client.newCall(request).execute().asJsoup()
 
         val scriptBody = doc.selectFirst("script:containsData(m3u8)")?.data()
             ?.let { script ->
