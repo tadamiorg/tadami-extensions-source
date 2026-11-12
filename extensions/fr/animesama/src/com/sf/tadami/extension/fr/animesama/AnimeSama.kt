@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sf.tadami.domain.anime.Anime
+import com.sf.tadami.extension.fr.animesama.filters.AnimeSamaFilters
+import com.sf.tadami.extension.fr.animesama.filters.AnimeSamaFilters.addFilters
 import com.sf.tadami.lib.i18n.i18n
 import com.sf.tadami.lib.lpayerextractor.LpayerExtractor
 import com.sf.tadami.lib.sendvidextractor.SendvidExtractor
@@ -54,6 +56,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.injectLazy
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 @Suppress("UNUSED")
 class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
@@ -152,12 +155,31 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
 
     // ============================== Latest Animes ===============================
 
-    override fun latestSelector(): String = "#containerAjoutsAnimes div a:first-of-type"
+    override fun latestSelector(): String = "div.as-carte-anime > a.as-carte-lien"
 
-    override fun latestAnimeNextPageSelector(): String = throw Exception("Not used")
+    override fun latestAnimeNextPageSelector(): String = "nav.pagi a[rel=next]"
+
+    /** The entries the earlier pages of Récents gave, see [latestAnimeParse]. */
+    private val latestSeenUrls: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** The site's pages Récents skipped, having nothing new: the app's page N is the site's N + this. */
+    @Volatile
+    private var latestSkippedPages = 0
 
     override fun latestAnimeParse(response: Response): AnimesPage {
-        val cards = response.asJsoup().select(latestSelector())
+        var document = response.asJsoup()
+        var sitePage = response.request.url.queryParameter("page")?.toIntOrNull() ?: 1
+        // One card per episode added: an entry once, at its latest episode, also when its episodes span pages.
+        // A page of entries already given is skipped, the app would take it for the end of the list
+        var cards = newLatestCards(document)
+        var skipped = 0
+        while (cards.isEmpty() && skipped < LATEST_MAX_SKIPPED_PAGES && document.selectFirst(latestAnimeNextPageSelector()) != null) {
+            skipped++
+            latestSkippedPages++
+            sitePage++
+            document = client.newCall(GET(latestUrl(sitePage), headers)).execute().use { it.asJsoup() }
+            cards = newLatestCards(document)
+        }
         val animes = cards.map { latestAnimeFromElement(it) }
 
         // A card only names the anime: its season comes from the anime's page, as in search and details,
@@ -176,18 +198,26 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                 anime.title = seasonTitle(seasonName, animeName)
                 anime.rawTitle = animeName
             } else {
-                // Page unreachable or season not listed yet: the card says "Saison 2 Episode 5"
-                card.selectFirst("span.info-text")?.text()?.substringBefore(" Episode")?.trim()
+                // Page unreachable or season not listed yet: the card says "S2 · Épisode 5"
+                card.selectFirst(".as-carte-info > span:not(.as-carte-temps)")?.text()?.substringBefore(" ·")?.trim()
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { anime.title = seasonTitle(it, anime.title) }
             }
         }
 
-        return AnimesPage(animes, false)
+        return AnimesPage(animes, document.selectFirst(latestAnimeNextPageSelector()) != null)
     }
 
+    /** Some cards link the anime's page (/catalogue/ghost-in-the-shell/), not a season: they have no episodes */
+    private fun newLatestCards(document: Document) =
+        document.select(latestSelector())
+            .filter { SEASON_URL_REGEX.containsMatchIn(it.attr("href")) }
+            .filter { latestSeenUrls.add(it.attr("href").removeSuffix("/")) }
+
+    private fun latestUrl(sitePage: Int) = "$baseUrl/nouveautes/?type=episodes&page=$sitePage"
+
     override fun latestAnimeFromElement(element: Element): SAnime {
-        val titleText = element.selectFirst("h2.card-title")?.text() ?: ""
+        val titleText = element.selectFirst("h3.as-carte-titre")?.text() ?: ""
         val anime: SAnime = SAnime.create()
         anime.title = titleText
         anime.rawTitle = titleText.ifBlank { null }
@@ -199,7 +229,14 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         return anime
     }
 
-    override fun latestAnimesRequest(page: Int): Request = GET(baseUrl, headers)
+    override fun latestAnimesRequest(page: Int): Request {
+        // Récents loads again from the first page
+        if (page == 1) {
+            latestSeenUrls.clear()
+            latestSkippedPages = 0
+        }
+        return GET(latestUrl(page + latestSkippedPages), headers)
+    }
 
 
     // ============================== Search Animes ===============================
@@ -227,6 +264,10 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                     document.select(selector).first()
                 } != null
 
+                // Only the versions of the languages filtered, when some are
+                val voices = AnimeSamaFilters.voices(filters)?.let { chosen -> VOICES_VALUES.filter { it in chosen } }
+                    ?: VOICES_VALUES
+
                 val pageRequests = Observable.fromIterable(animeList).flatMap { anime ->
                     client.newCall(GET("$baseUrl${anime.url}", headers))
                         .asCancelableObservable()
@@ -235,7 +276,7 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
                             val animeName = doc.selectFirst("h1")?.text() ?: anime.title
 
                             val seasons = seasonPanels(doc).flatMap { (seasonName, seasonUrl) ->
-                                VOICES_VALUES.parallelMap { voice ->
+                                voices.parallelMap { voice ->
                                     getLangUrl(
                                         anime = anime,
                                         seasonName = seasonName,
@@ -292,27 +333,27 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         noToasts: Boolean
     ): Request {
 
-        return when {
-            query.isNotEmpty() -> {
-                GET("$baseUrl/catalogue/?type[]=Anime&search=$query&page=$page", headers)
-            }
-
-            else -> {
-                GET("$baseUrl/catalogue/?type[]=Anime&page=$page", headers)
-            }
-        }
+        val url = "$baseUrl/catalogue/".toHttpUrl().newBuilder()
+            .addQueryParameter("type[]", "Anime")
+            .apply { if (query.isNotEmpty()) addQueryParameter("search", query) }
+            .addFilters(filters)
+            .addQueryParameter("page", "$page")
+            .build()
+        return GET(url.toString(), headers)
     }
+
+    override fun getFilterList(): AnimeFilterList = AnimeSamaFilters.filterList(i18n)
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         val anime: SAnime = SAnime.create()
-        anime.title = element.selectFirst("h2.card-title")?.text() ?: ""
+        anime.title = element.selectFirst("h3.as-carte-titre")?.text() ?: ""
         anime.thumbnailUrl = element.select("img").attr("src")
         anime.setUrlWithoutDomain(element.selectFirst("a")!!.attr("href").removeSuffix("/"))
         return anime
     }
 
 
-    override fun searchAnimeNextPageSelector(): String = "div#list_pagination a.bg-sky-900 ~ a"
+    override fun searchAnimeNextPageSelector(): String = "nav.pagi a[rel=next]"
 
 
     // ============================== Anime Details ===============================
@@ -777,6 +818,12 @@ class AnimeSama : ConfigurableParsedHttpAnimeSource<AnimeSamaPreferences>(
         private val SEASON_REGEX = Regex("^\\s*panneauAnime\\(\"(.*)\", \"(.*)\"\\)", RegexOption.MULTILINE)
 
         private val YEAR_REGEX = Regex("\\b(19|20)\\d{2}\\b")
+
+        /** Site pages of Récents read at most for one of the app's pages, when they only have entries already given. */
+        private const val LATEST_MAX_SKIPPED_PAGES = 5
+
+        /** /catalogue/<anime>/<season>/<lang> */
+        private val SEASON_URL_REGEX = Regex("""/catalogue/[^/]+/[^/]+/[^/]+/?$""")
 
         private val PLAYERS_REGEX = Regex("""^\s*var eps\d+ = (\[.*?]);""", RegexOption.MULTILINE)
         private val EPS_TOKEN_REGEX = Regex("""var epsJeton = "([^"]*)"""")
